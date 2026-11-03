@@ -65,6 +65,54 @@ function UserNameLink(props: { name: string; uid?: number; username?: string }) 
   );
 }
 
+function HomeFeedList(props: { items: IndexFeedItem[]; keyPrefix: string }) {
+  const items = props.items.slice(0, 20);
+  if (!items.length) return <div class="xzqh-muted">暂无数据</div>;
+  return (
+    <div class="xzqh-list xzqh-home-feed-list">
+      {items.map((t) => (
+        <div class="xzqh-item" key={`${props.keyPrefix}-${t.tid}-${t.title}`}>
+          <div class="xzqh-item-main">
+            <div class="xzqh-subject-line">
+              {t.forumName && (
+                <span class="xzqh-badges">
+                  <a
+                    class="xzqh-badge"
+                    href={t.fid ? `thread.php?fid=${t.fid}` : undefined}
+                    onClick={(e) => {
+                      if (!t.fid) return;
+                      e.preventDefault();
+                      navigate({ name: 'forum', fid: t.fid!, page: 1 });
+                    }}
+                  >
+                    {t.forumName}
+                  </a>
+                </span>
+              )}
+              <a
+                class="title"
+                href={`read.php?tid=${t.tid}`}
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigate({ name: 'thread', tid: t.tid, page: 1 });
+                }}
+              >
+                {t.title}
+              </a>
+            </div>
+            {(t.author || t.time) && (
+              <div class="xzqh-meta">
+                {t.author || ''}
+                {t.time ? ` · ${t.time}` : ''}
+              </div>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function HomePage() {
   const [cats, setCats] = useState<ForumCategory[]>([]);
   const [latestTopics, setLatestTopics] = useState<IndexFeedItem[]>([]);
@@ -94,17 +142,16 @@ export function HomePage() {
     };
   }, []);
 
-  const feed = feedTab === 'topics' ? latestTopics : recentReplies;
-
   if (loading) return <Loading />;
+  const showFeed = latestTopics.length > 0 || recentReplies.length > 0;
   return (
     <div>
       {err && <Alert type="error">{err}</Alert>}
-      <div class="xzqh-panel" style={{ marginBottom: 16 }}>
+      <div class="xzqh-panel xzqh-home-feed" style={{ marginBottom: 16 }}>
         <h1 class="xzqh-h1">方舆论坛</h1>
-        {(latestTopics.length > 0 || recentReplies.length > 0) && (
+        {showFeed && (
           <>
-            <div class="xzqh-types" style={{ marginTop: 4 }}>
+            <div class="xzqh-types xzqh-home-feed-tabs">
               <button
                 type="button"
                 class={feedTab === 'topics' ? 'active' : ''}
@@ -120,44 +167,25 @@ export function HomePage() {
                 最近回复{recentReplies.length ? ` (${recentReplies.length})` : ''}
               </button>
             </div>
-            <div class="xzqh-list">
-              {feed.slice(0, 20).map((t) => (
-                <div class="xzqh-item" key={`${feedTab}-${t.tid}-${t.title}`}>
-                  <div>
-                    {t.forumName && (
-                      <a
-                        class="xzqh-badge"
-                        href={t.fid ? `thread.php?fid=${t.fid}` : undefined}
-                        onClick={(e) => {
-                          if (!t.fid) return;
-                          e.preventDefault();
-                          navigate({ name: 'forum', fid: t.fid!, page: 1 });
-                        }}
-                        style={{ marginRight: 8 }}
-                      >
-                        {t.forumName}
-                      </a>
-                    )}
-                    <a
-                      class="title"
-                      href={`read.php?tid=${t.tid}`}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        navigate({ name: 'thread', tid: t.tid, page: 1 });
-                      }}
-                    >
-                      {t.title}
-                    </a>
-                    {(t.author || t.time) && (
-                      <div class="xzqh-meta">
-                        {t.author || ''}
-                        {t.time ? ` · ${t.time}` : ''}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-              {!feed.length && <div class="xzqh-muted">暂无数据</div>}
+            <div class="xzqh-home-feed-cols">
+              <section
+                class={`xzqh-home-feed-col${feedTab === 'topics' ? ' is-active' : ''}`}
+                data-feed="topics"
+              >
+                <h2 class="xzqh-home-feed-col-title">
+                  最新主题{latestTopics.length ? ` (${latestTopics.length})` : ''}
+                </h2>
+                <HomeFeedList items={latestTopics} keyPrefix="topics" />
+              </section>
+              <section
+                class={`xzqh-home-feed-col${feedTab === 'replies' ? ' is-active' : ''}`}
+                data-feed="replies"
+              >
+                <h2 class="xzqh-home-feed-col-title">
+                  最近回复{recentReplies.length ? ` (${recentReplies.length})` : ''}
+                </h2>
+                <HomeFeedList items={recentReplies} keyPrefix="replies" />
+              </section>
             </div>
           </>
         )}

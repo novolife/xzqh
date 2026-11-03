@@ -334,16 +334,27 @@ function decodeUriComponentSafe(s: string): string {
 
 export function parseMaxPage(doc: Document, hint?: string): number {
   let max = 1;
+  const fileHint = hint?.split('?')[0].replace(/^\//, '') || '';
+  const fidHint = hint?.match(/[?&]fid=(\d+)/)?.[1] || '';
+
+  // Prefer real page= links. Do NOT scrape .pages textContent: phpwind renders
+  // "123456...120" without spaces, so /\d+/ becomes 123456.
   for (const a of doc.querySelectorAll('a[href*="page="]')) {
-    const href = a.getAttribute('href') || '';
-    if (hint && !href.includes(hint.split('?')[0].replace(/^\//, '')) && !href.includes('page=')) continue;
-    const n = Number(href.match(/page=(\d+)/)?.[1] || 0);
+    const href = (a.getAttribute('href') || '').replace(/&amp;/g, '&');
+    if (fileHint && !href.includes(fileHint)) continue;
+    if (fidHint && !new RegExp(`[?&]fid=${fidHint}(?:&|#|$)`).test(href)) continue;
+    const n = Number(href.match(/[?&]page=(\d+)/)?.[1] || 0);
     if (n > max) max = n;
   }
-  // pages widget text like 1 2 3 ... 100
-  const pagesText = doc.querySelector('.pages, .pages3, #main .pages')?.textContent || '';
-  const nums = pagesText.match(/\d+/g)?.map(Number) || [];
-  for (const n of nums) if (n > max) max = n;
+
+  // phpwind jump box: page=(value>120) ? 120 : value
+  for (const el of doc.querySelectorAll('.pages, .pages3')) {
+    const blob = el.innerHTML || '';
+    for (const m of blob.matchAll(/value\s*>\s*(\d+)/gi)) {
+      const n = Number(m[1]);
+      if (n > max && n < 100000) max = n;
+    }
+  }
   return max;
 }
 
