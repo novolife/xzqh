@@ -1,0 +1,21 @@
+{
+  "name": "xzqh-forum-client",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "方舆论坛 phpwind 8.7 第三方 Tampermonkey 前端客户端",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "preact": "^10.26.4"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.10.1",
+    "typescript": "^5.8.2",
+    "vite": "^6.2.2",
+    "vite-plugin-monkey": "^5.0.8"
+  }
+}
