@@ -1,11 +1,13 @@
 // ==UserScript==
-// @name         XZQH Forum Client / 方舆论坛客户端
+// @name         方舆论坛客户端
 // @namespace    http://xzqh.info/lt/
-// @version      1.0.0
+// @version      1.0.1
 // @author       XZQH Client
-// @description  方舆论坛美化
+// @description  方舆论坛（xzqh.info/lt）第三方前端：现代化浏览、登录、发帖/回复；账号与权限仍走原站，不改服务器。安装后打开论坛即可使用；设置页可换主题、调字号或一键恢复原界面。
 // @license      MIT
 // @icon         http://xzqh.info/lt/images/wind/logo.png
+// @homepageURL  https://github.com/novolife/xzqh
+// @supportURL   https://github.com/novolife/xzqh/issues
 // @downloadURL  https://raw.githubusercontent.com/novolife/xzqh/gh-pages/xzqh-forum.user.js
 // @updateURL    https://raw.githubusercontent.com/novolife/xzqh/gh-pages/xzqh-forum.user.js
 // @match        http://xzqh.info/lt/*
