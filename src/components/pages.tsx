@@ -4,6 +4,7 @@ import type {
   ForumCategory,
   ForumTypeTab,
   IndexFeedItem,
+  IndexFooterInfo,
   MessageItem,
   PostFloor,
   SessionUser,
@@ -111,6 +112,7 @@ export function HomePage() {
   const [cats, setCats] = useState<ForumCategory[]>([]);
   const [latestTopics, setLatestTopics] = useState<IndexFeedItem[]>([]);
   const [recentReplies, setRecentReplies] = useState<IndexFeedItem[]>([]);
+  const [footer, setFooter] = useState<IndexFooterInfo | null>(null);
   const [feedTab, setFeedTab] = useState<'topics' | 'replies'>('topics');
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(true);
@@ -124,6 +126,7 @@ export function HomePage() {
         setCats(data.categories);
         setLatestTopics(data.latestTopics);
         setRecentReplies(data.recentReplies);
+        setFooter(data.footer);
         if (!data.latestTopics.length && data.recentReplies.length) setFeedTab('replies');
       } catch (e) {
         if (alive) setErr(e instanceof Error ? e.message : '加载失败');
@@ -138,6 +141,12 @@ export function HomePage() {
 
   if (loading) return <Loading />;
   const showFeed = latestTopics.length > 0 || recentReplies.length > 0;
+  const showFooter =
+    !!footer &&
+    (footer.friendLinks.length > 0 ||
+      !!footer.onlineSummary ||
+      footer.onlineUsers.length > 0 ||
+      footer.memberGroups.length > 0);
   return (
     <div>
       {err && <Alert type="error">{err}</Alert>}
@@ -191,52 +200,125 @@ export function HomePage() {
           <div class="xzqh-grid-boards">
             {c.boards.map((b) => (
               <div class="xzqh-board" key={b.fid}>
-                <div>
-                  <a
-                    class="title"
-                    href={`thread.php?fid=${b.fid}`}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      navigate({ name: 'forum', fid: b.fid, page: 1 });
-                    }}
-                  >
-                    {b.name}
-                  </a>
-                  {b.description && <div class="xzqh-meta">{b.description}</div>}
-                  <div class="xzqh-meta">
-                    {b.today != null ? `今日 ${b.today} · ` : ''}
-                    版主 {b.moderators.slice(0, 4).join(' ') || '—'}
+                <div class="xzqh-board-main">
+                  <div class="xzqh-board-hd">
+                    <a
+                      class="title"
+                      href={`thread.php?fid=${b.fid}`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        navigate({ name: 'forum', fid: b.fid, page: 1 });
+                      }}
+                    >
+                      {b.name}
+                    </a>
+                    {b.description && <div class="xzqh-board-desc">{b.description}</div>}
                   </div>
-                  {b.lastTitle && (
-                    <div class="xzqh-meta" style={{ marginTop: 4 }}>
-                      最新：
-                      {b.lastTid ? (
-                        <a
-                          href={`read.php?tid=${b.lastTid}`}
-                          onClick={(e) => {
-                            e.preventDefault();
-                            navigate({ name: 'thread', tid: b.lastTid!, page: 1 });
-                          }}
-                        >
-                          {b.lastTitle}
-                        </a>
-                      ) : (
-                        b.lastTitle
-                      )}
-                      {b.lastAuthor ? ` · ${b.lastAuthor}` : ''}
-                      {b.lastTime ? ` · ${b.lastTime}` : ''}
+                  {b.lastTitle ? (
+                    <div class="xzqh-board-latest">
+                      <span class="xzqh-board-latest-label">最新</span>
+                      <div class="xzqh-board-latest-body">
+                        {b.lastTid ? (
+                          <a
+                            class="xzqh-board-latest-title"
+                            href={`read.php?tid=${b.lastTid}`}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              navigate({ name: 'thread', tid: b.lastTid!, page: 1 });
+                            }}
+                          >
+                            {b.lastTitle}
+                          </a>
+                        ) : (
+                          <span class="xzqh-board-latest-title">{b.lastTitle}</span>
+                        )}
+                        {(b.lastAuthor || b.lastTime) && (
+                          <div class="xzqh-board-latest-meta">
+                            {b.lastAuthor}
+                            {b.lastAuthor && b.lastTime ? ' · ' : ''}
+                            {b.lastTime}
+                          </div>
+                        )}
+                      </div>
                     </div>
+                  ) : (
+                    <div class="xzqh-board-latest is-empty">暂无新帖</div>
                   )}
-                </div>
-                <div class="xzqh-stats">
-                  <div>{b.topics} 主题</div>
-                  <div>{b.posts} 帖子</div>
+                  <div class="xzqh-board-ft">
+                    <div class="xzqh-board-ft-meta">
+                      {b.today != null ? <span>今日 {b.today}</span> : null}
+                      <span>版主 {b.moderators.slice(0, 3).join(' ') || '—'}</span>
+                    </div>
+                    <div class="xzqh-stats">
+                      <span>{b.topics} 主题</span>
+                      <span>{b.posts} 帖子</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             ))}
           </div>
         </section>
       ))}
+
+      {showFooter && footer && (
+        <section class="xzqh-panel xzqh-home-footer" aria-label="站点信息">
+          {footer.friendLinks.length > 0 && (
+            <div class="xzqh-home-footer-block">
+              <h2 class="xzqh-home-footer-title">友情链接</h2>
+              <div class="xzqh-friend-links">
+                {footer.friendLinks.map((l) => (
+                  <a
+                    key={`${l.href}-${l.name}`}
+                    href={l.href}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    title={l.title || l.name}
+                  >
+                    {l.name}
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+          {(footer.onlineSummary || footer.onlineUsers.length > 0) && (
+            <div class="xzqh-home-footer-block">
+              <h2 class="xzqh-home-footer-title">
+                在线用户
+                {footer.onlineSummary ? (
+                  <span class="xzqh-home-footer-sub"> — {footer.onlineSummary}</span>
+                ) : null}
+              </h2>
+              {footer.onlineUsers.length > 0 && (
+                <div class="xzqh-online-users">
+                  {footer.onlineUsers.map((u) =>
+                    u.href ? (
+                      <a key={u.name} href={u.href} target="_blank" rel="noreferrer">
+                        {u.name}
+                      </a>
+                    ) : (
+                      <span key={u.name}>{u.name}</span>
+                    ),
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+          {footer.memberGroups.length > 0 && (
+            <div class="xzqh-home-footer-block">
+              <h2 class="xzqh-home-footer-title">会员类型</h2>
+              <div class="xzqh-member-groups">
+                {footer.memberGroups.map((g) => (
+                  <span class="xzqh-member-group" key={g.name}>
+                    {g.iconUrl ? <img src={g.iconUrl} alt="" width={16} height={16} /> : null}
+                    {g.name}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+      )}
     </div>
   );
 }
@@ -657,14 +739,24 @@ export function ThreadPage(props: { tid: number; page: number; user: SessionUser
     const el = voteBox.current;
     if (!el || !data) return;
 
-    // 服务端投票 HTML 里的按钮依赖被剥离的原站 JS（vv.vote()）；
-    // 客户端自己接管点击，避免 ReferenceError 且不提交。
-    el.querySelectorAll('button, input[type="button"]').forEach((node) => {
-      const btn = node as HTMLElement;
-      if (/^\s*投票\s*$/.test(btn.textContent || '') || /^\s*投票\s*$/.test((node as HTMLInputElement).value || '')) {
-        btn.removeAttribute('onclick');
-      }
-    });
+    // 服务端投票 HTML 依赖被剥离的原站 JS（vv.vote / checkVote）；客户端接管。
+    el.querySelectorAll('button, input[type="button"], input[type="radio"], input[type="checkbox"]').forEach(
+      (node) => {
+        (node as HTMLElement).removeAttribute('onclick');
+      },
+    );
+
+    // 原站 vote_Bot 是 span.btn2 > span > button 精灵图壳，会把文字挤出胶囊外；换成干净按钮。
+    const voteBot = el.querySelector('.vote_Bot');
+    if (voteBot) {
+      const old = voteBot.querySelector('button, input[type="button"]') as HTMLElement | null;
+      const label = ((old?.textContent || (old as HTMLInputElement | null)?.value || '投票') as string).trim() || '投票';
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'xzqh-vote-submit';
+      btn.textContent = label;
+      voteBot.replaceChildren(btn);
+    }
 
     const collect = () => {
       const selected = [
@@ -700,8 +792,21 @@ export function ThreadPage(props: { tid: number; page: number; user: SessionUser
       if (r.ok) reload(data.page);
     };
 
+    const toggleVoters = (e: Event) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const on = el.classList.toggle('xzqh-vote--show-voters');
+      const link = el.querySelector('#viewVoters') as HTMLElement | null;
+      if (link) link.textContent = on ? '收起参与人员' : '查看参与人员';
+    };
+
     const onClick = (e: Event) => {
       const target = e.target as Element | null;
+      const votersLink = target?.closest?.('#viewVoters, a.fn, a.s4') as HTMLElement | null;
+      if (votersLink && /参与人员|收起/.test(votersLink.textContent || '')) {
+        toggleVoters(e);
+        return;
+      }
       const btn = target?.closest?.('button, input[type="button"]') as HTMLElement | null;
       if (!btn) return;
       const text = (btn.textContent || '').trim() || (btn as HTMLInputElement).value || '';
@@ -827,9 +932,13 @@ export function ThreadPage(props: { tid: number; page: number; user: SessionUser
       </div>
 
       {data.isVote && data.voteHtml && (
-        <div class="xzqh-panel" style={{ marginBottom: 14 }}>
-          <h2 style={{ marginTop: 0, fontSize: '1rem' }}>投票</h2>
-          <div ref={voteBox} dangerouslySetInnerHTML={{ __html: data.voteHtml }} />
+        <div class="xzqh-panel xzqh-vote-panel" style={{ marginBottom: 14 }}>
+          <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>投票</h2>
+          <div
+            class="xzqh-vote"
+            ref={voteBox}
+            dangerouslySetInnerHTML={{ __html: data.voteHtml }}
+          />
         </div>
       )}
 

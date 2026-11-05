@@ -1,7 +1,35 @@
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import preact from '@preact/preset-vite';
 import monkey from 'vite-plugin-monkey';
 import path from 'node:path';
+import fs from 'node:fs';
+
+/** document-start 时 head 可能尚未创建，把 CSS 注入改为落到 documentElement。 */
+function patchCssInjectHead(): Plugin {
+  return {
+    name: 'xzqh-patch-css-inject-head',
+    writeBundle(_opts, bundle) {
+      for (const item of Object.values(bundle)) {
+        if (item.type !== 'chunk' && item.type !== 'asset') continue;
+        const fileName = item.fileName;
+        if (!fileName.endsWith('.user.js')) continue;
+        const full = path.resolve(__dirname, 'dist', fileName);
+        if (!fs.existsSync(full)) continue;
+        let code = fs.readFileSync(full, 'utf8');
+        const next = code
+          .replace(
+            /document\.head\.append\((a|e)\)/g,
+            '(document.head||document.documentElement).append($1)',
+          )
+          .replace(
+            /document\.head\.appendChild\((a|e)\)/g,
+            '(document.head||document.documentElement).appendChild($1)',
+          );
+        if (next !== code) fs.writeFileSync(full, next, 'utf8');
+      }
+    },
+  };
+}
 
 export default defineConfig({
   resolve: {
@@ -26,9 +54,8 @@ export default defineConfig({
           'https://www.xzqh.info/lt/*',
         ],
         icon: 'http://xzqh.info/lt/images/wind/logo.png',
-        // document-end：避开 Tampermonkey document-start 阶段 document.head 尚未创建
-        // 导致插件自动注入 CSS 时报 null 的问题；页面解析完成后再接管界面。
-        'run-at': 'document-end',
+        // document-start：赶在原站 post.js onReady / PwFace.init 之前补齐 defaultface
+        'run-at': 'document-start',
         grant: 'none',
         connect: ['pin.aliyun.com', 'xzqh.info'],
       },
@@ -36,6 +63,7 @@ export default defineConfig({
         fileName: 'xzqh-forum.user.js',
       },
     }),
+    patchCssInjectHead(),
   ],
   build: {
     outDir: 'dist',

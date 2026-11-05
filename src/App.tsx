@@ -96,12 +96,18 @@ export function App() {
     }
   })();
 
+  const searchFid =
+    route.name === 'forum' || route.name === 'compose'
+      ? route.fid || undefined
+      : undefined;
+
   return (
     <Layout
       user={user}
       unread={unread}
       showListStyle={route.name !== 'thread'}
       settingsOpen={route.name === 'settings'}
+      searchFid={searchFid}
       onLogout={async () => {
         await logout();
         await refreshSession();

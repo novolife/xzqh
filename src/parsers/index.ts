@@ -1,5 +1,14 @@
 import { absUrl } from '@/lib/http';
-import type { ForumBoard, ForumCategory, IndexFeedItem, ThreadItem } from '@/lib/types';
+import type {
+  ForumBoard,
+  ForumCategory,
+  IndexFeedItem,
+  IndexFooterInfo,
+  IndexFriendLink,
+  IndexMemberGroup,
+  IndexOnlineUser,
+  ThreadItem,
+} from '@/lib/types';
 
 /**
  * phpwind 8.7 index layout on xzqh.info:
@@ -213,6 +222,110 @@ function parseByTableRows(doc: Document): ForumCategory[] {
  *   #tabswi1_A  → nav labels (最新主题 / 最近回复)
  *   #tabswi1_B > .switchItem[i] → corresponding lists
  */
+/** 首页底部：友情链接、在线用户摘要/名单、会员类型图例 */
+export function parseIndexFooter(doc: Document): IndexFooterInfo {
+  const friendLinks = parseFriendLinks(doc);
+  const online = parseOnlineBlock(doc);
+  return {
+    friendLinks,
+    onlineSummary: online.summary,
+    onlineUsers: online.users,
+    memberGroups: online.groups,
+  };
+}
+
+function parseFriendLinks(doc: Document): IndexFriendLink[] {
+  const box =
+    doc.querySelector('.sharelink2') ||
+    [...doc.querySelectorAll('div.h')].find((el) => /友情链接/.test(el.textContent || ''))
+      ?.parentElement?.querySelector('.sharelink2, .tTable, .sharelink');
+  if (!box) return [];
+  const links: IndexFriendLink[] = [];
+  const seen = new Set<string>();
+  for (const a of box.querySelectorAll('a[href]')) {
+    const href = (a.getAttribute('href') || '').trim();
+    const name = (a.textContent || '').replace(/\s+/g, ' ').trim();
+    if (!href || !name || /^javascript:/i.test(href)) continue;
+    const key = `${href}#${name}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const title = (a.getAttribute('title') || '').trim() || undefined;
+    links.push({ name, href: absUrl(href) || href, title });
+  }
+  return links;
+}
+
+function parseOnlineBlock(doc: Document): {
+  summary?: string;
+  users: IndexOnlineUser[];
+  groups: IndexMemberGroup[];
+} {
+  const header = [...doc.querySelectorAll('div.h')].find((el) =>
+    /在线用户/.test(el.textContent || ''),
+  );
+  if (!header) return { users: [], groups: [] };
+
+  const summary = (header.textContent || '')
+    .replace(/\s+/g, ' ')
+    .replace(/^在线用户\s*-?\s*/, '')
+    .trim();
+
+  // 紧随其后的内容表：会员名单 + 会员类型图例
+  let body: Element | null = header.nextElementSibling;
+  if (!body || !body.querySelector('a, img, span, table')) {
+    body = header.parentElement?.querySelector('.tTable') || body;
+  }
+
+  const users: IndexOnlineUser[] = [];
+  const groups: IndexMemberGroup[] = [];
+  const seenUser = new Set<string>();
+  const seenGroup = new Set<string>();
+
+  if (body) {
+    for (const a of body.querySelectorAll('a[href*="u.php"]')) {
+      const name = (a.textContent || '').replace(/\s+/g, ' ').trim();
+      if (!name || seenUser.has(name)) continue;
+      seenUser.add(name);
+      users.push({
+        name,
+        href: absUrl(a.getAttribute('href') || '') || a.getAttribute('href') || undefined,
+      });
+      if (users.length >= 120) break;
+    }
+
+    for (const img of body.querySelectorAll('img[src*="group/"]')) {
+      const name =
+        (img.getAttribute('alt') || img.getAttribute('title') || '').trim() ||
+        (img.parentElement?.textContent || '').replace(/\s+/g, ' ').trim();
+      if (!name || seenGroup.has(name)) continue;
+      seenGroup.add(name);
+      const src = img.getAttribute('src') || '';
+      groups.push({
+        name,
+        iconUrl: src ? absUrl(src) || src : undefined,
+      });
+    }
+
+    // 无图时：纯文字「普通会员」等
+    if (!groups.length) {
+      for (const span of body.querySelectorAll('span')) {
+        const name = (span.textContent || '').replace(/\s+/g, ' ').trim();
+        if (!name || name.length > 20 || seenGroup.has(name)) continue;
+        if (/会员|管理|版主|游客|访客|禁言|VIP|贵宾/.test(name)) {
+          seenGroup.add(name);
+          groups.push({ name });
+        }
+      }
+    }
+  }
+
+  return {
+    summary: summary || undefined,
+    users,
+    groups,
+  };
+}
+
 export function parseIndexFeeds(doc: Document): {
   latestTopics: IndexFeedItem[];
   recentReplies: IndexFeedItem[];

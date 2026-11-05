@@ -3,7 +3,7 @@ import { absUrl } from '@/lib/http';
 import { detectShowMsg } from './showmsg';
 import { parseVerifyhash } from './index';
 import { parseMaxPage, extractPostForm } from './thread';
-import { enhanceContentHtml } from '@/windcode';
+import { enhanceContentHtml, wrapWithElementFont } from '@/windcode';
 import { splitTitleTypes, stripForumTitlePrefix } from '@/lib/title';
 import type { ThreadTypeTag } from '@/lib/types';
 
@@ -272,7 +272,7 @@ function parseReadFloor(el: Element, idx: number): PostFloor | null {
     !!el.querySelector('a[href*="quote"], a[onclick*="quote"], a[onclick*="postreply"]');
 
   const attachments = parseAttachments(contentEl);
-  const contentHtml = enhanceContentHtml(contentEl.innerHTML);
+  const contentHtml = enhanceContentHtml(wrapWithElementFont(contentEl, contentEl.innerHTML));
 
   return {
     pid: pid || 0,

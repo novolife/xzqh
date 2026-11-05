@@ -11,15 +11,20 @@ const THEME_BG: Record<string, string> = {
   lake: '#e9f2f3',
   sand: '#f2ebe3',
   night: '#121820',
+  contrast: '#ffffff',
 };
+
+/** 这些页面保持原站，客户端不接管（含 SPA 内跳转也要整页离开）。 */
+export function isNativeOnlyPath(pathname: string = location.pathname): boolean {
+  return /(^|\/)(u|profile|message|searcher)\.php$/i.test(pathname);
+}
 
 export function shouldActivate(): boolean {
   if (isClientDisabled()) return false;
   if (!/\/lt(\/|$)/.test(location.pathname)) return false;
   // Don't take over raw asset URLs
   if (/\.(js|css|gif|png|jpg|jpeg|ico|swf|xml)(\?|$)/i.test(location.pathname)) return false;
-  // 用户中心 / 个人页 / 资料设置 / 私信保持原站，不接管
-  if (/(^|\/)(u|profile|message)\.php$/i.test(location.pathname)) return false;
+  if (isNativeOnlyPath()) return false;
   return true;
 }
 

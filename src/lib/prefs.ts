@@ -1,4 +1,4 @@
-export type ThemeId = 'fangyu' | 'jade' | 'ink' | 'lake' | 'night' | 'sand';
+export type ThemeId = 'fangyu' | 'jade' | 'ink' | 'lake' | 'night' | 'sand' | 'contrast';
 export type ListStyleId = 'list' | 'card';
 
 /** 客户端默认基准字号（px）。 */
@@ -19,6 +19,7 @@ export const THEME_OPTIONS: { id: ThemeId; name: string; desc: string }[] = [
   { id: 'lake', name: '澄湖', desc: '青蓝浅底' },
   { id: 'sand', name: '沙洲', desc: '琥珀浅棕' },
   { id: 'night', name: '夜航', desc: '深色护眼' },
+  { id: 'contrast', name: '高对比', desc: '黑白分明' },
 ];
 
 export const LIST_STYLE_OPTIONS: { id: ListStyleId; name: string; desc: string }[] = [

@@ -13,6 +13,73 @@ import {
 import { BOARD_MENU_STATE_EVENT, toggleBoardMenu } from '@/lib/boardMenu';
 
 const LOGO_SRC = forumUrl('images/wind/logo.png');
+const SEARCH_PLACEHOLDER = '搜索其实很简单！';
+
+type SearchKind = 'local' | 'thread' | 'user' | 'forum';
+
+/** 对齐原站顶栏搜索：POST searcher.php，离开客户端进原站结果页。 */
+function NavSearch(props: { fid?: number; verifyhash?: string }) {
+  const canLocal = !!props.fid && props.fid > 0;
+  const [kind, setKind] = useState<SearchKind>(canLocal ? 'local' : 'thread');
+  const [keyword, setKeyword] = useState('');
+
+  useEffect(() => {
+    setKind(canLocal ? 'local' : 'thread');
+  }, [canLocal, props.fid]);
+
+  const type = kind === 'user' ? 'user' : kind === 'forum' ? 'forum' : 'thread';
+  const useLocal = kind === 'local' && canLocal;
+
+  return (
+    <form
+      class="xzqh-nav-search"
+      action="searcher.php"
+      method="post"
+      accept-charset="GBK"
+      onSubmit={(e) => {
+        const kw = keyword.trim();
+        if (!kw || kw === SEARCH_PLACEHOLDER) {
+          e.preventDefault();
+        }
+      }}
+    >
+      <input type="hidden" name="verify" value={props.verifyhash || ''} />
+      <input type="hidden" name="step" value="2" />
+      <input type="hidden" name="type" value={type} />
+      {useLocal && (
+        <>
+          <input type="hidden" name="method" value="AND" />
+          <input type="hidden" name="sch_area" value="1" />
+          <input type="hidden" name="sch_time" value="all" />
+          <input type="hidden" name="fid" value={String(props.fid)} />
+        </>
+      )}
+      <input
+        class="xzqh-nav-search-input"
+        type="text"
+        name="keyword"
+        value={keyword}
+        placeholder={SEARCH_PLACEHOLDER}
+        autocomplete="off"
+        onInput={(e) => setKeyword((e.target as HTMLInputElement).value)}
+      />
+      <select
+        class="xzqh-nav-search-type"
+        aria-label="搜索类型"
+        value={kind}
+        onChange={(e) => setKind((e.target as HTMLSelectElement).value as SearchKind)}
+      >
+        {canLocal && <option value="local">本版</option>}
+        <option value="thread">帖子</option>
+        <option value="user">用户</option>
+        <option value="forum">版块</option>
+      </select>
+      <button type="submit" class="xzqh-nav-search-btn">
+        搜索
+      </button>
+    </form>
+  );
+}
 
 export function Layout(props: {
   user: SessionUser | null;
@@ -23,8 +90,18 @@ export function Layout(props: {
   showListStyle?: boolean;
   /** 当前是否在客户端设置页；再点「设置」退出。 */
   settingsOpen?: boolean;
+  /** 当前版块 fid，用于「本版」搜索。 */
+  searchFid?: number;
 }) {
-  const { user, children, onLogout, unread, showListStyle = true, settingsOpen = false } = props;
+  const {
+    user,
+    children,
+    onLogout,
+    unread,
+    showListStyle = true,
+    settingsOpen = false,
+    searchFid,
+  } = props;
   const [prefs, setPrefs] = useState<ClientPrefs>(() => loadPrefs());
   const [boardMenu, setBoardMenu] = useState({ available: false, open: false });
   const topRef = useRef<HTMLElement>(null);
@@ -121,13 +198,11 @@ export function Layout(props: {
         <div class="xzqh-top-navbar">
           <div class="xzqh-top-inner xzqh-top-navrow">
             <nav class="xzqh-nav">
-              <a href="index.php" onClick={(e) => { e.preventDefault(); navigate({ name: 'home' }); }}>版块</a>
-              <a href="searcher.php?sch_time=newatc" onClick={(e) => { e.preventDefault(); navigate({ name: 'search', schTime: 'newatc' }); }}>新帖</a>
-              <a href="searcher.php" onClick={(e) => { e.preventDefault(); navigate({ name: 'search' }); }}>搜索</a>
+              <NavSearch fid={searchFid} verifyhash={user?.verifyhash} />
               {user?.loggedIn ? (
                 <>
                   <a href="message.php">
-                    私信{(unread ?? 0) > 0 ? `(${unread})` : ''}
+                    消息{(unread ?? 0) > 0 ? `(${unread})` : ''}
                   </a>
                   <a href={user.uid ? `u.php?uid=${user.uid}` : 'u.php'}>
                     {user.username}

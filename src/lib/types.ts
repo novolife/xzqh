@@ -71,6 +71,30 @@ export interface IndexFeedItem {
   time?: string;
 }
 
+/** Homepage footer: 友情链接 / 在线用户 / 会员类型 */
+export interface IndexFriendLink {
+  name: string;
+  href: string;
+  title?: string;
+}
+
+export interface IndexMemberGroup {
+  name: string;
+  iconUrl?: string;
+}
+
+export interface IndexOnlineUser {
+  name: string;
+  href?: string;
+}
+
+export interface IndexFooterInfo {
+  friendLinks: IndexFriendLink[];
+  onlineSummary?: string;
+  onlineUsers: IndexOnlineUser[];
+  memberGroups: IndexMemberGroup[];
+}
+
 export interface ForumTypeTab {
   id: string;
   name: string;

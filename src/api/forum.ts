@@ -1,11 +1,12 @@
 import { fetchHtml, parseDocument } from '@/lib/http';
-import { parseIndexFeeds, parseIndexForums } from '@/parsers/index';
-import type { ForumCategory, IndexFeedItem } from '@/lib/types';
+import { parseIndexFeeds, parseIndexFooter, parseIndexForums } from '@/parsers/index';
+import type { ForumCategory, IndexFeedItem, IndexFooterInfo } from '@/lib/types';
 
 export async function fetchForumIndex(): Promise<{
   categories: ForumCategory[];
   latestTopics: IndexFeedItem[];
   recentReplies: IndexFeedItem[];
+  footer: IndexFooterInfo;
 }> {
   const { html } = await fetchHtml('index.php');
   const doc = parseDocument(html);
@@ -14,5 +15,6 @@ export async function fetchForumIndex(): Promise<{
     categories: parseIndexForums(doc),
     latestTopics: feeds.latestTopics,
     recentReplies: feeds.recentReplies,
+    footer: parseIndexFooter(doc),
   };
 }

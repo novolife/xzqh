@@ -1,3 +1,5 @@
+// 须置顶：补齐原站缺失的 defaultface，赶在 post.js onReady 之前
+import './pageCompat';
 import { Component, render } from 'preact';
 import type { ComponentChildren } from 'preact';
 import { App } from './App';

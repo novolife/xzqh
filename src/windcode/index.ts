@@ -1,13 +1,55 @@
 import { absUrl } from '@/lib/http';
 
-/** Sanitize and enhance already-rendered phpwind HTML content. */
+/** Strip characters unsafe inside a CSS font-family value. */
+export function safeFontFamily(name: string): string {
+  return String(name || '')
+    .replace(/["';<>\\{}]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80);
+}
+
+/**
+ * Sanitize and enhance already-rendered phpwind HTML content.
+ * Preserves author-chosen fonts (`[font=…]`, `<font face>`, inline font-family).
+ */
 export function enhanceContentHtml(html: string): string {
   let s = html;
   s = s.replace(/<script[\s\S]*?<\/script>/gi, '');
   s = s.replace(/\b(src|href)=["'](?!https?:|data:|javascript:)([^"']+)["']/gi, (_m, attr, url) => {
     return `${attr}="${absUrl(url)}"`;
   });
+
+  // 残留 Wind Code 字体：按所选字体渲染
+  s = s.replace(/\[font=([^\]]+)\]([\s\S]*?)\[\/font\]/gi, (_m, name, body) => {
+    const fam = safeFontFamily(name);
+    return fam ? `<span class="xzqh-font" style="font-family:${fam}">${body}</span>` : body;
+  });
+
+  // <font face="…"> → 明确的 font-family，避免被正文默认字体盖住观感
+  s = s.replace(/<font\b([^>]*)>/gi, (_m, rawAttrs: string) => {
+    const attrs = String(rawAttrs || '');
+    const face = attrs.match(/\bface\s*=\s*(["'])([^"']*)\1/i)?.[2] ?? attrs.match(/\bface\s*=\s*([^\s>]+)/i)?.[1];
+    const fam = safeFontFamily(face || '');
+    if (!fam) return `<font${attrs}>`;
+    if (/\bfont-family\s*:/i.test(attrs)) return `<font${attrs}>`;
+    if (/\bstyle\s*=\s*(["'])/i.test(attrs)) {
+      return `<font${attrs.replace(/\bstyle\s*=\s*(["'])/i, (_s, q) => `style=${q}font-family:${fam};`)}>`;
+    }
+    return `<font${attrs} style="font-family:${fam}">`;
+  });
+
   return s;
+}
+
+/** If the content root itself carries a font, wrap inner HTML so it survives innerHTML extraction. */
+export function wrapWithElementFont(el: Element, innerHtml: string): string {
+  const style = el.getAttribute('style') || '';
+  const fromStyle = style.match(/font-family\s*:\s*([^;]+)/i)?.[1];
+  const fromFace = el.getAttribute('face') || '';
+  const fam = safeFontFamily(fromStyle || fromFace);
+  if (!fam) return innerHtml;
+  return `<span class="xzqh-font" style="font-family:${fam}">${innerHtml}</span>`;
 }
 
 const SIZE_PX = [10, 12, 14, 16, 18, 24, 36];
@@ -70,7 +112,10 @@ export function windcodeToHtml(raw: string, opts: WindcodePreviewOpts = {}): str
     /\[backcolor=([#\w]+)\]([\s\S]*?)\[\/backcolor\]/gi,
     '<span style="background-color:$1">$2</span>',
   );
-  s = s.replace(/\[font=([^\]]+)\]([\s\S]*?)\[\/font\]/gi, '<span style="font-family:$1">$2</span>');
+  s = s.replace(/\[font=([^\]]+)\]([\s\S]*?)\[\/font\]/gi, (_m, name, body) => {
+    const fam = safeFontFamily(String(name));
+    return fam ? `<span class="xzqh-font" style="font-family:${fam}">${body}</span>` : body;
+  });
   s = s.replace(/\[size=(\d+)\]([\s\S]*?)\[\/size\]/gi, (_m, n, body) => {
     const i = Math.min(7, Math.max(1, Number(n))) - 1;
     return `<span style="font-size:${SIZE_PX[i]}px">${body}</span>`;

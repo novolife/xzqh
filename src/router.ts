@@ -1,4 +1,5 @@
 import type { Route } from './lib/types';
+import { isNativeOnlyPath } from './bootstrap';
 
 const BASE_PATH = (() => {
   const m = location.pathname.match(/^(.*?\/lt\/)/);
@@ -71,8 +72,14 @@ export function routeToUrl(route: Route): string {
     case 'forum':
       return `${BASE_PATH}thread.php?fid=${route.fid}&page=${route.page}${route.type ? `&type=${route.type}` : ''}${route.special ? `&special=${route.special}` : ''}${route.search ? `&search=${route.search}` : ''}`;
     case 'thread': {
-      const page = route.page >= 9999 ? 'e' : String(route.page);
-      return `${BASE_PATH}read.php?tid=${route.tid}&page=${page}${route.page >= 9999 ? '#a' : ''}`;
+
+      if (route.page >= 9999) {
+        return `${BASE_PATH}read.php?tid=${route.tid}&page=e#a`;
+      }
+      if (!route.page || route.page <= 1) {
+        return `${BASE_PATH}read.php?tid=${route.tid}`;
+      }
+      return `${BASE_PATH}read.php?tid=${route.tid}&page=${route.page}`;
     }
     case 'compose': {
       const p = new URLSearchParams();
@@ -142,6 +149,17 @@ export function navigate(route: Route, replace = false): void {
     route = { name: 'home' };
   }
   const url = routeToUrl(route);
+  // 搜索 / 用户中心等：整页跳转，避免 SPA 改 URL 后仍挂着客户端
+  try {
+    const path = new URL(url, location.origin).pathname;
+    if (isNativeOnlyPath(path)) {
+      if (replace) location.replace(url);
+      else location.assign(url);
+      return;
+    }
+  } catch {
+    /* fall through to SPA */
+  }
   // 同一地址不重复压栈，避免后退要点两次
   if (!replace && urlsEqual(url, location.href)) {
     window.dispatchEvent(new PopStateEvent('popstate'));
@@ -170,8 +188,8 @@ export function linkClickHandler(e: MouseEvent): void {
   if (!url.pathname.includes('/lt/')) return;
   // let browser handle non-forum assets
   if (/\.(gif|png|jpg|jpeg|zip|rar|pdf)$/i.test(url.pathname)) return;
-  // 用户页 / 资料设置 / 私信交给原站，整页跳转
-  if (/(^|\/)(u|profile|message)\.php$/i.test(url.pathname)) return;
+  // 用户页 / 资料设置 / 私信 / 搜索交给原站，整页跳转
+  if (isNativeOnlyPath(url.pathname)) return;
   e.preventDefault();
   const route = parseLocation(url.href);
   navigate(route);
