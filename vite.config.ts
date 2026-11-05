@@ -3,6 +3,22 @@ import preact from '@preact/preset-vite';
 import monkey from 'vite-plugin-monkey';
 import path from 'node:path';
 import fs from 'node:fs';
+import pkg from './package.json';
+
+/** GitHub 发布页 / raw 地址，供 Tampermonkey 安装与自动更新 */
+const GH_USER = 'novolife';
+const GH_REPO = 'xzqh';
+const USERSCRIPT_FILE = 'xzqh-forum.user.js';
+const DOWNLOAD_URL = `https://raw.githubusercontent.com/${GH_USER}/${GH_REPO}/gh-pages/${USERSCRIPT_FILE}`;
+const UPDATE_URL = DOWNLOAD_URL;
+
+function resolveUserscriptVersion(): string {
+  const base = String(pkg.version || '1.0.0');
+  // CI：用 run_number 生成可递增版本，方便油猴检测到更新
+  const run = process.env.USERSCRIPT_VERSION || process.env.GITHUB_RUN_NUMBER;
+  if (run && /^\d+$/.test(run)) return `${base}.${run}`;
+  return base;
+}
 
 /** document-start 时 head 可能尚未创建，把 CSS 注入改为落到 documentElement。 */
 function patchCssInjectHead(): Plugin {
@@ -44,7 +60,7 @@ export default defineConfig({
       userscript: {
         name: 'XZQH Forum Client / 方舆论坛客户端',
         namespace: 'http://xzqh.info/lt/',
-        version: '1.0.0',
+        version: resolveUserscriptVersion(),
         description: '方舆论坛美化',
         author: 'XZQH Client',
         match: [
@@ -54,13 +70,15 @@ export default defineConfig({
           'https://www.xzqh.info/lt/*',
         ],
         icon: 'http://xzqh.info/lt/images/wind/logo.png',
+        downloadURL: DOWNLOAD_URL,
+        updateURL: UPDATE_URL,
         // document-start：赶在原站 post.js onReady / PwFace.init 之前补齐 defaultface
         'run-at': 'document-start',
         grant: 'none',
         connect: ['pin.aliyun.com', 'xzqh.info'],
       },
       build: {
-        fileName: 'xzqh-forum.user.js',
+        fileName: USERSCRIPT_FILE,
       },
     }),
     patchCssInjectHead(),

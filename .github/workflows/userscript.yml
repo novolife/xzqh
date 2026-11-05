@@ -1,0 +1,86 @@
+name: Build Userscript
+
+on:
+  push:
+    branches: [master, main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: userscript-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build userscript
+        run: npm run build
+        env:
+          # 供 vite 写入可更新的版本号（见 vite.config.ts）
+          USERSCRIPT_VERSION: ${{ github.run_number }}
+
+      - name: Verify artifact
+        run: |
+          test -f dist/xzqh-forum.user.js
+          head -n 20 dist/xzqh-forum.user.js
+          wc -c dist/xzqh-forum.user.js
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: xzqh-forum-userscript
+          path: dist/xzqh-forum.user.js
+          if-no-files-found: error
+
+      - name: Prepare gh-pages payload
+        run: |
+          mkdir -p public-userscript
+          cp dist/xzqh-forum.user.js public-userscript/
+          cat > public-userscript/index.html << 'EOF'
+          <!doctype html>
+          <html lang="zh-CN">
+          <head>
+            <meta charset="utf-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1" />
+            <title>方舆论坛客户端 · Tampermonkey</title>
+            <style>
+              body { font: 16px/1.6 system-ui, sans-serif; max-width: 40rem; margin: 3rem auto; padding: 0 1rem; color: #222; }
+              a.btn { display: inline-block; margin: 0.5rem 0.5rem 0.5rem 0; padding: 0.6rem 1rem; border-radius: 999px; background: #1b72af; color: #fff; text-decoration: none; }
+              code { background: #f3f6f9; padding: 0.1em 0.35em; border-radius: 4px; }
+            </style>
+          </head>
+          <body>
+            <h1>方舆论坛客户端</h1>
+            <p>点击下方链接安装 / 更新 Tampermonkey 脚本（需已安装油猴扩展）。</p>
+            <p>
+              <a class="btn" href="./xzqh-forum.user.js">安装 xzqh-forum.user.js</a>
+            </p>
+            <p>原始地址：<code>xzqh-forum.user.js</code></p>
+          </body>
+          </html>
+          EOF
+
+      - name: Deploy to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./public-userscript
+          publish_branch: gh-pages
+          force_orphan: true
+          user_name: github-actions[bot]
+          user_email: github-actions[bot]@users.noreply.github.com

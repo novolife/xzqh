@@ -5,10 +5,12 @@
 ## 安装
 
 1. 浏览器安装 [Tampermonkey](https://www.tampermonkey.net/)
-2. 打开本仓库构建产物 [`dist/xzqh-forum.user.js`](dist/xzqh-forum.user.js)（或先执行下方构建）
-3. Tampermonkey → 添加新脚本 → 粘贴文件内容并保存  
-   也可直接把 `dist/xzqh-forum.user.js` 拖进浏览器，由 Tampermonkey 导入
+2. **推荐（GitHub 自动构建）**：打开安装地址，由油猴导入并支持后续自动更新：  
+   [https://raw.githubusercontent.com/novolife/xzqh/gh-pages/xzqh-forum.user.js](https://raw.githubusercontent.com/novolife/xzqh/gh-pages/xzqh-forum.user.js)
+3. 或本地构建：执行下方 `npm run build`，再打开 / 拖入 [`dist/xzqh-forum.user.js`](dist/xzqh-forum.user.js)
 4. 访问 `http://xzqh.info/lt/`
+
+> `master` 推送到 GitHub 后，Actions 会构建脚本并发布到 `gh-pages` 分支。首次使用需在仓库 Settings → Pages 中允许从 `gh-pages` 分支发布（raw 链接一般推送后即可用）。
 
 ## 开发
 
