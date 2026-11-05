@@ -29,12 +29,15 @@ Greasy Fork **没有**可供 Actions 直接上传的发布 API，官方做法是
 2. 打开 [Greasy Fork](https://greasyfork.org/) 登录 → **发布脚本** → **从 URL 导入**，填：  
    `https://raw.githubusercontent.com/novolife/xzqh/greasyfork/xzqh-forum.user.js`
 3. 勾选「将此脚本设置为从 URL 同步」；同步类型选自动或 Webhook
-4. **即时更新（推荐）**：打开 [Webhook 说明](https://greasyfork.org/zh-CN/users/webhook-info) 生成密钥；在 GitHub 仓库 **Settings → Webhooks → Add webhook**：
+4. **附加信息（详细说明）**：打开脚本管理页 → **同步** / 管理，在「附加信息」同步里填：  
+   `https://raw.githubusercontent.com/novolife/xzqh/greasyfork/ADDITIONAL_INFO.md`  
+   格式选 **Markdown**，勾选作为默认语言；保存后点「更新并同步」。文案源文件为 [`docs/greasyfork-additional-info.md`](docs/greasyfork-additional-info.md)。
+5. **即时更新（推荐）**：打开 [Webhook 说明](https://greasyfork.org/zh-CN/users/webhook-info) 生成密钥；在 GitHub 仓库 **Settings → Webhooks → Add webhook**：
    - Payload URL：页面上给你的 `https://greasyfork.org/.../webhook`
    - Content type：`application/json`
    - Secret：刚才生成的密钥
    - 事件：Just the push event
-5. 之后只要升 `package.json` 的 `version` 并推送 `master`，Actions 会改 `greasyfork` 分支上的脚本；Webhook 通知 Greasy Fork 拉取（需 `@version` 升高才会作为新版本）
+6. 之后只要升 `package.json` 的 `version` 并推送 `master`，Actions 会改 `greasyfork` 分支上的脚本与附加信息；Webhook 通知 Greasy Fork 拉取（代码更新需 `@version` 升高）
 
 注意：Greasy Fork 禁止压缩/混淆代码，本仓库生产构建已关闭 minify，并带有 `@license MIT`。
 

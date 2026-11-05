@@ -57,12 +57,15 @@ export default defineConfig({
     monkey({
       entry: 'src/main.tsx',
       userscript: {
-        name: 'XZQH Forum Client / 方舆论坛客户端',
+        name: '方舆论坛客户端',
         namespace: 'http://xzqh.info/lt/',
         version: resolveUserscriptVersion(),
-        description: '方舆论坛美化',
+        description:
+          '方舆论坛（xzqh.info/lt）第三方前端：现代化浏览、登录、发帖/回复；账号与权限仍走原站，不改服务器。安装后打开论坛即可使用；设置页可换主题、调字号或一键恢复原界面。',
         author: 'XZQH Client',
         license: 'MIT',
+        homepageURL: `https://github.com/${GH_USER}/${GH_REPO}`,
+        supportURL: `https://github.com/${GH_USER}/${GH_REPO}/issues`,
         match: [
           'http://xzqh.info/lt/*',
           'https://xzqh.info/lt/*',

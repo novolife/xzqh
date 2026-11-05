@@ -136,6 +136,7 @@ jobs:
           set -euo pipefail
           BRANCH=greasyfork
           FILE=xzqh-forum.user.js
+          INFO=ADDITIONAL_INFO.md
           REMOTE="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           PUBLISH_DIR=$(mktemp -d)
 
@@ -157,16 +158,19 @@ jobs:
               '// @license      MIT' \
               '// ==/UserScript==' \
               > "$FILE"
+            printf '%s\n' '(Awaiting sync)' > "$INFO"
             printf '%s\n' \
               '# Greasy Fork sync branch' \
               '' \
-              '由 GitHub Actions 生成。请在 Greasy Fork 将同步 URL 设为：' \
-              '' \
+              '脚本同步：' \
               "\`https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/greasyfork/${FILE}\`" \
               '' \
-              '并按 https://greasyfork.org/zh-CN/users/webhook-info 配置 Webhook。' \
+              '附加信息同步（Markdown）：' \
+              "\`https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/greasyfork/${INFO}\`" \
+              '' \
+              'Webhook：https://greasyfork.org/zh-CN/users/webhook-info' \
               > README.md
-            git add "$FILE" README.md
+            git add "$FILE" "$INFO" README.md
             git -c user.name='github-actions[bot]' \
                 -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
                 commit -m 'chore: greasyfork placeholder'
@@ -177,7 +181,8 @@ jobs:
           clone_or_init
           cd "$PUBLISH_DIR"
           cp "${GITHUB_WORKSPACE}/dist/${FILE}" "$FILE"
-          git add "$FILE"
+          cp "${GITHUB_WORKSPACE}/docs/greasyfork-additional-info.md" "$INFO"
+          git add "$FILE" "$INFO"
           if git diff --cached --quiet; then
             echo "greasyfork 分支内容无变化，跳过推送"
             exit 0
