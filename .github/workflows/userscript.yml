@@ -4,6 +4,11 @@ on:
   push:
     branches: [master, main]
   workflow_dispatch:
+    inputs:
+      force_release:
+        description: 即使版本 tag 已存在也强制重建 Release
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -18,6 +23,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -25,25 +32,55 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: Resolve version
+        id: ver
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::package.json version 无效: $VERSION"
+            exit 1
+          fi
+          TAG="v${VERSION}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+          git fetch --tags --force
+          if git rev-parse "refs/tags/$TAG" >/dev/null 2>&1; then
+            EXISTS=true
+          else
+            EXISTS=false
+          fi
+          echo "tag_exists=$EXISTS" >> "$GITHUB_OUTPUT"
+
+          FORCE="${{ github.event.inputs.force_release }}"
+          if [[ "$EXISTS" == "false" || "$FORCE" == "true" ]]; then
+            SHOULD=true
+          else
+            SHOULD=false
+          fi
+          echo "should_release=$SHOULD" >> "$GITHUB_OUTPUT"
+          echo "Version=$VERSION Tag=$TAG tag_exists=$EXISTS should_release=$SHOULD"
+
       - name: Install dependencies
         run: npm ci
 
       - name: Build userscript
         run: npm run build
-        env:
-          # 供 vite 写入可更新的版本号（见 vite.config.ts）
-          USERSCRIPT_VERSION: ${{ github.run_number }}
+        # @version 直接取 package.json（见 vite.config.ts）
 
-      - name: Verify artifact
+      - name: Verify artifact & @version
         run: |
           test -f dist/xzqh-forum.user.js
-          head -n 20 dist/xzqh-forum.user.js
+          head -n 30 dist/xzqh-forum.user.js
+          META_VER=$(sed -n 's/^\/\/ @version[[:space:]]*//p' dist/xzqh-forum.user.js | head -n1 | tr -d '\r')
+          echo "userscript @version=$META_VER"
+          test "$META_VER" = "${{ steps.ver.outputs.version }}"
           wc -c dist/xzqh-forum.user.js
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: xzqh-forum-userscript
+          name: xzqh-forum-userscript-${{ steps.ver.outputs.version }}
           path: dist/xzqh-forum.user.js
           if-no-files-found: error
 
@@ -51,7 +88,9 @@ jobs:
         run: |
           mkdir -p public-userscript
           cp dist/xzqh-forum.user.js public-userscript/
-          cat > public-userscript/index.html << 'EOF'
+          VERSION='${{ steps.ver.outputs.version }}'
+          TAG='${{ steps.ver.outputs.tag }}'
+          cat > public-userscript/index.html << EOF
           <!doctype html>
           <html lang="zh-CN">
           <head>
@@ -62,15 +101,18 @@ jobs:
               body { font: 16px/1.6 system-ui, sans-serif; max-width: 40rem; margin: 3rem auto; padding: 0 1rem; color: #222; }
               a.btn { display: inline-block; margin: 0.5rem 0.5rem 0.5rem 0; padding: 0.6rem 1rem; border-radius: 999px; background: #1b72af; color: #fff; text-decoration: none; }
               code { background: #f3f6f9; padding: 0.1em 0.35em; border-radius: 4px; }
+              .meta { color: #666; font-size: 0.95rem; }
             </style>
           </head>
           <body>
             <h1>方舆论坛客户端</h1>
-            <p>点击下方链接安装 / 更新 Tampermonkey 脚本（需已安装油猴扩展）。</p>
+            <p class="meta">当前版本 <code>${VERSION}</code>（${TAG}）</p>
+            <p>点击下方链接安装 / 更新 Tampermonkey 脚本（需已安装油猴扩展）。油猴会按 <code>@version</code> 自动检测更新。</p>
             <p>
               <a class="btn" href="./xzqh-forum.user.js">安装 xzqh-forum.user.js</a>
+              <a class="btn" href="https://github.com/novolife/xzqh/releases/tag/${TAG}">查看 Release</a>
             </p>
-            <p>原始地址：<code>xzqh-forum.user.js</code></p>
+            <p>安装地址：<code>https://raw.githubusercontent.com/novolife/xzqh/gh-pages/xzqh-forum.user.js</code></p>
           </body>
           </html>
           EOF
@@ -84,3 +126,32 @@ jobs:
           force_orphan: true
           user_name: github-actions[bot]
           user_email: github-actions[bot]@users.noreply.github.com
+
+      - name: Create GitHub Release
+        if: steps.ver.outputs.should_release == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION='${{ steps.ver.outputs.version }}'
+          TAG='${{ steps.ver.outputs.tag }}'
+          NOTES=$(cat << EOF
+          ## 方舆论坛客户端 ${TAG}
+
+          - 版本来源：\`package.json\` → \`${VERSION}\`
+          - 油猴安装 / 更新：https://raw.githubusercontent.com/novolife/xzqh/gh-pages/xzqh-forum.user.js
+          - 本 Release 附件为同版本构建产物
+
+          将 \`package.json\` 的 \`version\` 升版并推送到 \`master\` 后，Actions 会自动识别并发布新 Release。
+          EOF
+          )
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG 已存在，更新附件…"
+            gh release upload "$TAG" dist/xzqh-forum.user.js --clobber
+            gh release edit "$TAG" --notes "$NOTES"
+          else
+            gh release create "$TAG" dist/xzqh-forum.user.js \
+              --title "方舆论坛客户端 ${TAG}" \
+              --notes "$NOTES" \
+              --target "${{ github.sha }}"
+          fi

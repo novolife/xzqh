@@ -13,11 +13,10 @@ const DOWNLOAD_URL = `https://raw.githubusercontent.com/${GH_USER}/${GH_REPO}/gh
 const UPDATE_URL = DOWNLOAD_URL;
 
 function resolveUserscriptVersion(): string {
-  const base = String(pkg.version || '1.0.0');
-  // CI：用 run_number 生成可递增版本，方便油猴检测到更新
-  const run = process.env.USERSCRIPT_VERSION || process.env.GITHUB_RUN_NUMBER;
-  if (run && /^\d+$/.test(run)) return `${base}.${run}`;
-  return base;
+  // 版本唯一来源：package.json；CI 升版后油猴按 @version 自动更新
+  const override = process.env.USERSCRIPT_VERSION?.trim();
+  if (override) return override;
+  return String(pkg.version || '1.0.0');
 }
 
 /** document-start 时 head 可能尚未创建，把 CSS 注入改为落到 documentElement。 */

@@ -7,10 +7,19 @@
 1. 浏览器安装 [Tampermonkey](https://www.tampermonkey.net/)
 2. **推荐（GitHub 自动构建）**：打开安装地址，由油猴导入并支持后续自动更新：  
    [https://raw.githubusercontent.com/novolife/xzqh/gh-pages/xzqh-forum.user.js](https://raw.githubusercontent.com/novolife/xzqh/gh-pages/xzqh-forum.user.js)
-3. 或本地构建：执行下方 `npm run build`，再打开 / 拖入 [`dist/xzqh-forum.user.js`](dist/xzqh-forum.user.js)
-4. 访问 `http://xzqh.info/lt/`
+3. 或从 [Releases](https://github.com/novolife/xzqh/releases) 下载对应版本的 `xzqh-forum.user.js`
+4. 或本地构建：执行下方 `npm run build`，再打开 / 拖入 [`dist/xzqh-forum.user.js`](dist/xzqh-forum.user.js)
+5. 访问 `http://xzqh.info/lt/`
 
-> `master` 推送到 GitHub 后，Actions 会构建脚本并发布到 `gh-pages` 分支。首次使用需在仓库 Settings → Pages 中允许从 `gh-pages` 分支发布（raw 链接一般推送后即可用）。
+### 自动发版
+
+版本号以根目录 [`package.json`](package.json) 的 `version` 为准（写入脚本 `@version`）。
+
+1. 修改 `package.json` 的 `version`（如 `1.0.0` → `1.0.1`）并推送到 GitHub 的 `master` / `main`
+2. Actions 会：构建脚本 → 发布到 `gh-pages`（油猴安装/更新地址）→ 若 `vX.Y.Z` 尚未发布则打 tag 并创建 GitHub Release（附带 `.user.js`）
+3. 油猴根据 `@version` 变化自动提示更新
+
+首次使用需在仓库 Settings → Pages 中允许从 `gh-pages` 分支发布。
 
 ## 开发
 
