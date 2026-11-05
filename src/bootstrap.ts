@@ -1,5 +1,5 @@
 import { isClientDisabled } from './lib/session';
-import { loadPrefs } from './lib/prefs';
+import { applyFontSizeToDocument, clearFontSizeFromDocument, loadPrefs } from './lib/prefs';
 
 const STYLE_ID = 'xzqh-client-hide-original';
 const ROOT_ID = 'xzqh-client-root';
@@ -18,6 +18,8 @@ export function shouldActivate(): boolean {
   if (!/\/lt(\/|$)/.test(location.pathname)) return false;
   // Don't take over raw asset URLs
   if (/\.(js|css|gif|png|jpg|jpeg|ico|swf|xml)(\?|$)/i.test(location.pathname)) return false;
+  // 用户中心 / 个人页 / 资料设置 / 私信保持原站，不接管
+  if (/(^|\/)(u|profile|message)\.php$/i.test(location.pathname)) return false;
   return true;
 }
 
@@ -39,10 +41,12 @@ export function installEarlyMask(): void {
       min-height: 100vh;
       position: relative;
       z-index: 2147483646;
+      zoom: var(--xzqh-font-factor, 1);
     }
   `;
   (document.documentElement || document.head || document).appendChild(style);
   document.documentElement.classList.add('xzqh-client-active');
+  applyFontSizeToDocument(loadPrefs().fontScale);
 }
 
 export function ensureRoot(): HTMLElement {
@@ -53,6 +57,7 @@ export function ensureRoot(): HTMLElement {
     const mount = () => {
       if (!document.body) return false;
       if (!root!.parentElement) document.body.appendChild(root!);
+      applyFontSizeToDocument(loadPrefs().fontScale);
       return true;
     };
     if (!mount()) {
@@ -61,11 +66,14 @@ export function ensureRoot(): HTMLElement {
         if (mount()) clearInterval(iv);
       }, 10);
     }
+  } else {
+    applyFontSizeToDocument(loadPrefs().fontScale);
   }
   return root;
 }
 
 export function teardownClient(): void {
+  clearFontSizeFromDocument();
   document.documentElement.classList.remove('xzqh-client-active');
   document.getElementById(STYLE_ID)?.remove();
   document.getElementById(ROOT_ID)?.remove();

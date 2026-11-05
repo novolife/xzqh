@@ -197,7 +197,6 @@ function parseThreadRow(tr: Element): ThreadItem | null {
   if (!tid) return null;
 
   let title = (titleA.textContent || '').replace(/\s+/g, ' ').trim();
-  title = title.replace(/\s+\d+$/, '').trim();
 
   // Category tags are separate links: <a class="view" href="thread.php?fid=&type=">[欧洲其他]</a>
   const typeTags: ThreadTypeTag[] = [];
@@ -272,6 +271,7 @@ function parseThreadRow(tr: Element): ThreadItem | null {
   ) as HTMLAnchorElement | null;
   const lastTimeEl = (lastTimeLink || lastCellEl?.querySelector('p')) as HTMLElement | null;
   const lastTime =
+    lastTimeLink?.getAttribute('title') ||
     lastTimeEl?.textContent?.replace(/\s+/g, ' ').trim() ||
     (lastCellEl?.textContent || '')
       .replace(lastAuthor || '', '')
@@ -379,6 +379,53 @@ export function extractPostForm(doc: Document): { action: string; fields: Record
   const action = form.getAttribute('action') || 'post.php';
   const verify = parseVerifyhash(doc.documentElement.innerHTML);
   if (verify && !fields.verify) fields.verify = verify;
+  // 原站用脚本把占位值 cn0zz 替换成真实 _hexie；DOMParser 不执行脚本，
+  // 这里从内联脚本中取出真实值，避免站点启用校验时提交被拒绝。
+  const hexie = doc.documentElement.innerHTML.match(
+    /document\.FORM\._hexie\.value\s*=\s*'([^']+)'/i,
+  )?.[1];
+  if (hexie) fields._hexie = hexie;
 
   return { action, fields };
+}
+
+/** Thread category options from post.php `#menu_p_type`. */
+export function extractComposeTypes(doc: Document): { id: string; name: string }[] {
+  const items: { id: string; name: string }[] = [];
+  for (const li of Array.from(doc.querySelectorAll('#menu_p_type li'))) {
+    const onclick = li.getAttribute('onclick') || '';
+    const m = onclick.match(/selectPtype\('(\d+)'\)/);
+    const name = (li.textContent || '').trim();
+    if (m && name && name !== '--' && m[1] !== '0' && name !== '选择分类') {
+      items.push({ id: m[1], name });
+    }
+  }
+  if (items.length) return items;
+
+  for (const opt of Array.from(
+    doc.querySelectorAll('select[name="p_type"] option, select[name="typeid"] option'),
+  )) {
+    const id = (opt as HTMLOptionElement).value;
+    const name = (opt.textContent || '').trim();
+    if (id && name && name !== '--' && name !== '选择分类') items.push({ id, name });
+  }
+  return items;
+}
+
+export function extractComposeOptionFlags(doc: Document): {
+  anonymousEnabled: boolean;
+  hideEnabled: boolean;
+  sellEnabled: boolean;
+  enhideEnabled: boolean;
+} {
+  const anon = doc.querySelector('input[name="atc_anonymous"]') as HTMLInputElement | null;
+  const hide = doc.querySelector('input[name="atc_hide"]') as HTMLInputElement | null;
+  const sell = doc.querySelector('input[name="atc_requiresell"]') as HTMLInputElement | null;
+  const enhide = doc.querySelector('input[name="atc_requireenhide"]') as HTMLInputElement | null;
+  return {
+    anonymousEnabled: !!anon && !anon.disabled,
+    hideEnabled: !!hide && !hide.disabled,
+    sellEnabled: !!sell && !sell.disabled,
+    enhideEnabled: !!enhide && !enhide.disabled,
+  };
 }

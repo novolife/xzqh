@@ -41,8 +41,6 @@ export async function searchForum(opts: {
 
 function parseSearchResults(html: string, page: number): { items: SearchResultItem[]; error?: string; page: number } {
   const doc = parseDocument(html);
-  const err = detectShowMsg(html, doc);
-  if (err) return { items: [], error: err.message, page };
 
   const items: SearchResultItem[] = [];
   const seen = new Set<number>();
@@ -56,5 +54,11 @@ function parseSearchResults(html: string, page: number): { items: SearchResultIt
     items.push({ tid, title, author });
     if (items.length >= 50) break;
   }
-  return { items, page };
+
+  // 结果页侧面/页脚可能含“提示信息”等字样，detectShowMsg 会误报；
+  // 只要解析到真实主题链接，就按成功结果处理。
+  if (items.length) return { items, page };
+  const err = detectShowMsg(html, doc);
+  if (err) return { items: [], error: err.message, page };
+  return { items: [], page };
 }

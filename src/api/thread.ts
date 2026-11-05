@@ -8,6 +8,7 @@ export async function fetchThreadList(opts: {
   page?: number;
   type?: string;
   special?: string;
+  search?: string;
   orderway?: string;
 }): Promise<ThreadListResult> {
   const page = opts.page || 1;
@@ -18,8 +19,8 @@ export async function fetchThreadList(opts: {
       page,
       type: opts.type,
       special: opts.special,
+      search: opts.search,
       orderway: opts.orderway,
-      search: opts.orderway ? 'all' : undefined,
       asc: opts.orderway ? 'DESC' : undefined,
     });
   const { html } = await fetchHtml(path);

@@ -26,7 +26,9 @@ export default defineConfig({
           'https://www.xzqh.info/lt/*',
         ],
         icon: 'http://xzqh.info/lt/images/wind/logo.png',
-        'run-at': 'document-start',
+        // document-end：避开 Tampermonkey document-start 阶段 document.head 尚未创建
+        // 导致插件自动注入 CSS 时报 null 的问题；页面解析完成后再接管界面。
+        'run-at': 'document-end',
         grant: 'none',
         connect: ['pin.aliyun.com', 'xzqh.info'],
       },

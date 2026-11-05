@@ -1,5 +1,9 @@
 import { fetchHtml, parseDocument, postForm, postMultipart, qs, forumUrl } from '@/lib/http';
-import { extractPostForm } from '@/parsers/thread';
+import {
+  extractComposeOptionFlags,
+  extractComposeTypes,
+  extractPostForm,
+} from '@/parsers/thread';
 import { parseVerifyhash } from '@/parsers/index';
 import { detectShowMsg } from '@/parsers/showmsg';
 import type { PostFormMeta } from '@/lib/types';
@@ -7,16 +11,31 @@ import type { PostFormMeta } from '@/lib/types';
 export async function loadComposeForm(opts: {
   fid: number;
   tid?: number;
-  quotePid?: number;
-  editPid?: number;
+  /** 原站 pid 参数；楼主为 'tpc' */
+  quotePid?: number | string;
+  /** 原站 pid 参数；楼主为 'tpc' */
+  editPid?: number | string;
+  /** 楼层序号，原站 modify 链接的 article= */
+  article?: number;
 }): Promise<PostFormMeta> {
   let path: string;
   if (opts.editPid && opts.tid) {
-    path = `post.php` + qs({ action: 'modify', tid: opts.tid, pid: opts.editPid });
+    // 本站 modify 必须带 fid，否则返回「提示信息」页
+    path =
+      `post.php` +
+      qs({
+        action: 'modify',
+        fid: opts.fid || undefined,
+        tid: opts.tid,
+        pid: opts.editPid,
+        article: opts.article,
+      });
   } else if (opts.tid && opts.quotePid) {
-    path = `post.php` + qs({ fid: opts.fid, tid: opts.tid, action: 'quote', pid: opts.quotePid });
+    path = `post.php` + qs({ fid: opts.fid, tid: opts.tid, action: 'quote', pid: opts.quotePid, article: opts.article });
   } else if (opts.tid) {
-    path = `post.php` + qs({ fid: opts.fid, tid: opts.tid });
+    // 回复必须带 action=reply：否则 phpwind 会返回“发表主题”表单，
+    // 提交时会创建新主题而不是回复。
+    path = `post.php` + qs({ fid: opts.fid, tid: opts.tid, action: 'reply' });
   } else {
     path = `post.php` + qs({ fid: opts.fid });
   }
@@ -32,16 +51,30 @@ export async function loadComposeForm(opts: {
   const verifyhash = parseVerifyhash(html) || extracted?.fields.verify || '';
   const fields = extracted?.fields || { verify: verifyhash, fid: String(opts.fid) };
   if (opts.tid) fields.tid = String(opts.tid);
+  if (!fields.action) fields.action = opts.tid ? 'reply' : 'new';
 
-  const titleRequired = !opts.tid || !!doc.querySelector('input[name="atc_title"]');
-  const uploadEnabled = !!doc.querySelector('input[type="file"]');
+  // 新主题必须填标题；回复/引用隐藏标题框（标题沿用表单里的 Re: 值）；
+  // 编辑主题首楼允许改标题，编辑回复不显示标题框。
+  const showTitle =
+    !opts.tid ||
+    (opts.editPid != null && (opts.article === 0 || opts.article == null));
+  const titleRequired = showTitle;
+
+  // 上传权限以原站 imageConfig.tabs 为准；没有 imageConfig 时退回文件输入探测。
+  const imageTabs = html.match(/imageConfig\s*=\s*\{[\s\S]*?tabs\s*:\s*\[([^\]]*)\]/i)?.[1];
+  const uploadEnabled = imageTabs
+    ? /['"]local['"]/.test(imageTabs)
+    : !!doc.querySelector('input[type="file"], .B_fileIcon, a[title*="附件"]');
 
   return {
     action: extracted?.action || path,
     fields,
     verifyhash,
     titleRequired,
+    showTitle,
     uploadEnabled,
+    types: extractComposeTypes(doc),
+    options: extractComposeOptionFlags(doc),
   };
 }
 
@@ -93,6 +126,19 @@ export async function submitPost(opts: {
 
 function interpretPostResponse(html: string, url: string): { ok: boolean; message: string; redirect?: string } {
   const parts = html.split('\t');
+  const first = (parts[0] || '').trim();
+  // phpwind AJAX 提交成功/失败格式：success\t<url> / error\t<message>
+  if (first === 'success') {
+    const target = (parts[1] || '').trim();
+    return {
+      ok: true,
+      message: '发表成功',
+      redirect: /read\.php\?tid=/.test(target) ? target : undefined,
+    };
+  }
+  if (first === 'error') {
+    return { ok: false, message: (parts[1] || '提交失败').trim() };
+  }
   if (parts.length >= 2 && /jump|reload|nextto/i.test(parts[1])) {
     return {
       ok: true,
@@ -126,32 +172,61 @@ function interpretPostResponse(html: string, url: string): { ok: boolean; messag
   return { ok: false, message: cleaned.slice(0, 180) || '提交失败，请检查权限或内容' };
 }
 
-export async function deletePost(opts: { tid: number; pid: number; verifyhash: string }): Promise<{ ok: boolean; message: string }> {
-  // Common PW delete via job.php or post action — try ajax style
-  const path =
-    `job.php` +
-    qs({
-      action: 'del',
-      tid: opts.tid,
-      pid: opts.pid,
-      verify: opts.verifyhash,
-      nowtime: Date.now(),
-    });
-  const { html } = await fetchHtml(path);
-  if (/成功|已删除|reload|jump/.test(html)) return { ok: true, message: '已删除' };
-  return { ok: false, message: html.replace(/<[^>]+>/g, ' ').trim().slice(0, 160) || '删除失败' };
+/**
+ * 删除帖子/楼层。官方 8.7 的删除入口不是 job.php?action=del，而是
+ * POST post.php?fid={fid} 的 delForm：step=1 + action=modify + pid + article。
+ * 楼主首楼 pid 为 'tpc'，article 为 0。
+ */
+export async function deletePost(opts: {
+  fid: number;
+  tid: number;
+  pid: number | string;
+  article?: number;
+  verifyhash: string;
+}): Promise<{ ok: boolean; message: string }> {
+  const { html, url } = await postForm(`post.php?fid=${opts.fid}`, {
+    step: '1',
+    action: 'modify',
+    fid: String(opts.fid),
+    tid: String(opts.tid),
+    pid: String(opts.pid),
+    article: String(opts.article ?? 0),
+    verify: opts.verifyhash,
+    _hexie: 'cn0zz',
+  });
+  if (
+    /read\.php\?tid=|after_delete|删除成功|已删除/.test(html) ||
+    /read\.php\?tid=/.test(url)
+  ) {
+    return { ok: true, message: '已删除' };
+  }
+  const err = detectShowMsg(html, parseDocument(html));
+  return { ok: false, message: err?.message || '删除失败或没有权限' };
 }
 
+/**
+ * 收藏主题。官方读帖页收藏链接为：
+ * apps.php?q=collection&a=favor&type=postfavor&ajax=1&id={tid}
+ * （原实现误用 pw_ajax.php?action=favor）
+ */
 export async function favorThread(tid: number, verifyhash: string): Promise<{ ok: boolean; message: string }> {
   const path =
-    `pw_ajax.php` +
-    qs({ action: 'favor', tid, verify: verifyhash, nowtime: Date.now() });
-  const { html } = await fetchHtml(path);
-  if (/成功|收藏/.test(html)) return { ok: true, message: '收藏成功' };
-  // alternate
-  const alt = await fetchHtml(
-    `job.php` + qs({ action: 'favor', tid, verify: verifyhash, nowtime: Date.now() }),
-  );
-  if (/成功|收藏/.test(alt.html)) return { ok: true, message: '收藏成功' };
-  return { ok: false, message: '收藏失败或已收藏' };
+    `apps.php` +
+    qs({
+      q: 'collection',
+      a: 'favor',
+      type: 'postfavor',
+      ajax: '1',
+      id: tid,
+      verify: verifyhash || undefined,
+      nowtime: Date.now(),
+    });
+  const { html, status } = await fetchHtml(path);
+  const cleaned = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  if (status >= 400) return { ok: false, message: `收藏失败 (HTTP ${status})` };
+  if (/success|收藏成功|已收藏|favor/i.test(html) && !/失败|错误|error/i.test(cleaned)) {
+    return { ok: true, message: '收藏成功' };
+  }
+  const err = detectShowMsg(html, parseDocument(html));
+  return { ok: false, message: err?.message || cleaned.slice(0, 160) || '收藏失败或已收藏' };
 }

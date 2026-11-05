@@ -42,11 +42,13 @@
 | 首页 | `index.php` |
 | 版块列表 | `thread.php?fid={fid}&page={n}` |
 | 帖子阅读 | `read.php?tid={tid}&page={n}` |
-| 发新帖 | `post.php?fid={fid}` |
-| 回复 | `post.php?fid={fid}&tid={tid}` 或读帖页快速回复 |
-| 编辑 | `post.php?action=modify&tid={tid}&pid={pid}` |
+| 发新帖 | `post.php?fid={fid}`（隐藏字段 `action=new`） |
+| 回复 | `post.php?action=reply&fid={fid}&tid={tid}` |
+| 引用 | `post.php?action=quote&fid={fid}&tid={tid}&pid={pid}&article={n}` |
+| 编辑 | `post.php?action=modify&fid={fid}&tid={tid}&pid={pid}&article={n}`（楼主首楼 `pid=tpc`） |
+| 删除 | `POST post.php?fid={fid}`，`step=1&action=modify&pid&article&verify` |
 | 登录 | `login.php` |
-| 退出 | `login.php?action=quit` |
+| 退出 | `login.php?action=quit&verify=...` |
 | 搜索 | `searcher.php` |
 | 用户 | `u.php?uid=` / `u.php?username=` |
 | 私信 | `message.php` |
@@ -54,8 +56,8 @@
 | 验证码图 | 阿里云：`pin.aliyun.com/get_img?identity=xzqh.info&kjtype=default&sessionid=...` |
 | 本机验证码 | `ck.php?nowtime=`（本站启用云验证码时不用） |
 | 附件下载 | `job.php?action=download&aid=` |
-| 收藏 | `pw_ajax.php?action=favor` 等 ajax 入口 |
-| 投票 | `job.php?action=vote` |
+| 收藏 | `apps.php?q=collection&a=favor&type=postfavor&ajax=1&id={tid}` |
+| 投票 | `POST job.php?action=vote`，字段 `tid`、`voteid`（多选 `|` 连接）、`verify` |
 
 ## 登录
 
@@ -114,42 +116,67 @@ var cloudcaptchaurl = "http://pin.aliyun.com/get_img?identity=xzqh.info&kjtype=d
 - 分类：`type=`；投票等：`special=1`
 - 发帖入口：`post.php?fid=#breadCrumb`
 
-## 读帖 `read.php`（需登录）
+## 读帖 `read.php`
 
-游客访问返回登录提示。登录后预期：
+读帖权限以服务器为准：公开版块游客可读，部分版块/帖子会返回「提示信息」页要求登录；不要假设所有帖子都需登录，也不要假设都公开。
 
+登录后：
 - 主题标题、版块面包屑
 - 楼层块（作者、uid、时间、楼层号、正文 HTML/Wind Code 渲染结果）
 - 操作：回复、引用、编辑、删除（按权限出现）
 - 分页：`read.php?tid=&page=`；`page=e` 末页
-- 快速回复表单字段通常含：`atc_content`、`tid`、`fid`、`verify`、`ajax` 等
+- 快速回复表单字段通常含：`atc_content`、`tid`、`fid`、`action=reply`、`verify`、`_hexie` 等
 - 附件链接指向 `job.php?action=download&aid=` 或 `attachment/` 路径
+- 收藏链接为 `apps.php?q=collection&a=favor&type=postfavor&ajax=1&id={tid}`
 
 ## 发帖 / 回复 `post.php`
 
 ### 常见字段
 
-- `atc_title` 标题（新主题）
+- `atc_title` 标题（新主题/编辑主题首楼）
 - `atc_content` 正文（Wind Code）
+- `action` 隐藏字段：`new` / `reply` / `quote` / `modify`
 - `verify` = 页面 `verifyhash`
+- `_hexie`：页面 HTML 初始为占位值 `cn0zz`，内联脚本会改成真实值；
+  DOMParser 不执行脚本，客户端需从 `document.FORM._hexie.value='...'` 提取
 - `ajax` = `1`（若走 ajax）
-- `fid` / `tid` / `pid`（编辑时）
+- `fid` / `tid` / `pid`（编辑时；楼主首楼 `pid=tpc`）/ `article`（楼层号，楼主为 0）
 - `cyid`、`magicname`、`magicid`、`atc_tags` 等可选
 - `nowtime` 查询参数防缓存
 
 ### 提交流程
 
-1. `GET post.php?...` 取表单与 `verifyhash`
+1. `GET post.php?...` 取表单与 `verifyhash`；回复必须带 `action=reply`，
+   否则 phpwind 返回新主题表单，提交会创建新主题
 2. `POST` 原字段（multipart 或 urlencoded，以页面为准）
-3. 解析响应：成功跳转/`jump`/`reload` 文本；失败展示服务器错误
+3. 解析响应：`success\t<url>` / `error\t<message>`，或跳转/`jump`/`reload` 文本；失败展示服务器错误
+
+### 删除
+
+`POST post.php?fid={fid}`，隐藏字段：`step=1`、`action=modify`、`fid`、`tid`、`pid`、
+`article`、`verify`（`_hexie` 如页面存在）。`job.php?action=del` **不是**删除入口。
 
 ## 上传
 
 phpwind 8.7 常见入口（以登录后表单实测为准）：
 
-- 发帖页附件字段 / Flash/HTML5 上传
-- `job.php?action=mutiupload` 等多文件上传
-- `pweditor` 相关图片上传
+### 图片（编辑器「插入图片」`app.insertImage`）
+
+- 标签页：`local`（本地图片）/ `network`（网络图片）；本站 `imageConfig.tabs = ['local','network']`
+- 网络图片：正文插入 `[img]http(s)://…[/img]`，不经上传
+- 本地图片：与附件共用 Flash/多文件通道 `job.php?action=mutiupload`
+  1. `GET job.php?action=mutiupload` → JSON 会话字段，如 `{"uid","step","verify"}`
+     - **此 `verify` 与页面 `verifyhash` 不同**，必须原样带回 POST，否则返回「非法请求」
+  2. `POST job.php?action=mutiupload`（multipart：会话字段 + `fid` + **仅** `Filedata` 文件字段）
+  3. 成功响应多为 XML：`<ajax><![CDATA[{"aid":…,"path":"attachment/…"}]]></ajax>`
+  4. 正文插入 `[attachment={aid}]`；发帖表单带 `flashatt[{aid}][desc]=`
+- 类型限制见页面 `imageConfig.filetype`（本站多为 jpg/gif/png）
+
+### 附件（编辑器「插入附件」`app.insertAttach`）
+
+- 同一 `mutiupload` 接口，允许类型更宽（本站含 pdf/rar/zip/txt 等，见 `attachConfig.filetype`）
+- 上传后挂到附件列表；插入正文同样为 `[attachment={aid}]` + `flashatt[...]`
+- 亦可随 `post.php` 提交时用 `attachment` / `attachment_N` 字段直传
 
 限制由服务器按用户组返回；客户端只展示错误、不绕过。
 

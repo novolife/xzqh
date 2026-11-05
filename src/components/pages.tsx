@@ -14,23 +14,27 @@ import type {
 } from '@/lib/types';
 import { Alert, Loading, Pager } from './Layout';
 import { TitleWithTypes, TypeTags } from './TitleWithTypes';
+import { MasonryList } from './MasonryList';
+import { WindEditor, type EditorFlashAtt } from './WindEditor';
 import { splitTitleTypes } from '@/lib/title';
 import { navigate } from '@/router';
 import { fetchForumIndex } from '@/api/forum';
 import { fetchThreadDetail, fetchThreadList } from '@/api/thread';
 import { fetchLoginPage, login, refreshCaptchaUrl } from '@/api/auth';
 import { deletePost, favorThread, loadComposeForm, submitPost } from '@/api/post';
-import { uploadAttachment } from '@/api/attach';
+import { flashAttFields, isImageFile, uploadMutiFile } from '@/api/attach';
 import { searchForum } from '@/api/search';
 import { fetchUserProfile } from '@/api/user';
 import { fetchMessages, sendMessage } from '@/api/message';
-import { windcodeToHtml, wrapQuote } from '@/windcode';
+import { wrapQuote } from '@/windcode';
 import { setClientDisabled } from '@/lib/session';
 import { teardownClient } from '@/bootstrap';
 import { submitVote } from '@/api/vote';
 import {
+  FONT_SIZE_BASE_PX,
   LIST_STYLE_OPTIONS,
   THEME_OPTIONS,
+  fontScaleToPx,
   loadPrefs,
   savePrefs,
   type ListStyleId,
@@ -47,19 +51,9 @@ function UserNameLink(props: { name: string; uid?: number; username?: string }) 
   const uid = props.uid && props.uid > 0 ? props.uid : undefined;
   const username = props.username?.trim() || name;
   const href = uid ? `u.php?uid=${uid}` : `u.php?username=${encodeURIComponent(username)}`;
+  // 用户页不走客户端，整页打开原站 u.php
   return (
-    <a
-      href={href}
-      class="xzqh-user-link"
-      onClick={(e) => {
-        e.preventDefault();
-        navigate({
-          name: 'user',
-          uid,
-          username: uid ? undefined : username,
-        });
-      }}
-    >
+    <a href={href} class="xzqh-user-link">
       {name}
     </a>
   );
@@ -309,7 +303,14 @@ function ForumSideNav(props: {
   );
 }
 
-export function ForumPage(props: { fid: number; page: number; type?: string; special?: string }) {
+export function ForumPage(props: {
+  fid: number;
+  page: number;
+  type?: string;
+  special?: string;
+  search?: string;
+  user: SessionUser | null;
+}) {
   const [data, setData] = useState<ThreadListResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [openTypeId, setOpenTypeId] = useState<string | null>(null);
@@ -327,6 +328,7 @@ export function ForumPage(props: { fid: number; page: number; type?: string; spe
       page: props.page,
       type: props.type,
       special: props.special,
+      search: props.search,
     })
       .then(async (d) => {
         if (!alive) return;
@@ -352,7 +354,7 @@ export function ForumPage(props: { fid: number; page: number; type?: string; spe
     return () => {
       alive = false;
     };
-  }, [props.fid, props.page, props.type, props.special]);
+  }, [props.fid, props.page, props.type, props.special, props.search]);
 
   useEffect(() => {
     if (!openTypeId) return;
@@ -397,16 +399,19 @@ export function ForumPage(props: { fid: number; page: number; type?: string; spe
 
   const goType = (t: { id: string; href: string }) => {
     setOpenTypeId(null);
+    const isDigest = t.id === 'digest' || /[?&]search=digest/.test(t.href);
     navigate({
       name: 'forum',
       fid: props.fid,
       page: 1,
-      type: /[?&]type=\d+/.test(t.href) && t.id !== 'digest' ? t.id : undefined,
-      special: /[?&]special=\d+/.test(t.href) ? t.id : undefined,
+      type: !isDigest && /[?&]type=\d+/.test(t.href) ? t.id : undefined,
+      special: !isDigest && /[?&]special=\d+/.test(t.href) ? t.id : undefined,
+      search: isDigest ? 'digest' : undefined,
     });
   };
 
   const typeActive = (t: { id: string; href: string; children?: { id: string }[] }) => {
+    if (t.id === 'digest' || t.href.includes('search=digest')) return props.search === 'digest';
     if (t.href.includes('special=') && props.special === t.id) return true;
     if (t.href.includes('type=') && props.type === t.id) return true;
     return !!t.children?.some((c) => c.id === props.type);
@@ -433,7 +438,7 @@ export function ForumPage(props: { fid: number; page: number; type?: string; spe
         <div>
           <h1 class="xzqh-h1">{data.forumName}</h1>
         </div>
-        {data.canPost && (
+        {data.canPost && props.user?.loggedIn && (
           <button
             type="button"
             class="xzqh-btn primary"
@@ -447,7 +452,7 @@ export function ForumPage(props: { fid: number; page: number; type?: string; spe
         <div class="xzqh-types">
           <button
             type="button"
-            class={!props.type && !props.special ? 'active' : ''}
+            class={!props.type && !props.special && !props.search ? 'active' : ''}
             onClick={() => navigate({ name: 'forum', fid: props.fid, page: 1 })}
           >
             全部
@@ -511,27 +516,30 @@ export function ForumPage(props: { fid: number; page: number; type?: string; spe
             page: p,
             type: props.type,
             special: props.special,
+            search: props.search,
           })
         }
       />
-      <div class="xzqh-list">
+      <MasonryList layoutKey={`${data.fid}-${data.page}-${props.type || ''}-${props.special || ''}-${data.threads.map((t) => t.tid).join(',')}`}>
         {data.threads.map((t) => (
           <div class={`xzqh-item${t.topped ? ' topped' : ''}`} key={t.tid}>
             <div class="xzqh-item-main">
               <div class="xzqh-subject-line">
-                {(t.topped || t.digest || t.vote || t.hasImage || t.isNew) && (
-                  <span class="xzqh-badges">
-                    {t.topped && <span class="xzqh-badge xzqh-badge--top">置顶</span>}
-                    {t.digest && <span class="xzqh-badge xzqh-badge--digest">精华</span>}
-                    {t.vote && <span class="xzqh-badge xzqh-badge--vote">投票</span>}
-                    {t.hasImage && <span class="xzqh-badge xzqh-badge--img">图</span>}
-                    {t.isNew && <span class="xzqh-badge xzqh-badge--new">NEW</span>}
-                  </span>
-                )}
-                <TypeTags
-                  tags={t.typeTags?.length ? t.typeTags : splitTitleTypes(t.title).typeTags}
-                  fid={data.fid}
-                />
+                <div class="xzqh-card-tags">
+                  {(t.topped || t.digest || t.vote || t.hasImage || t.isNew) && (
+                    <span class="xzqh-badges">
+                      {t.topped && <span class="xzqh-badge xzqh-badge--top">置顶</span>}
+                      {t.digest && <span class="xzqh-badge xzqh-badge--digest">精华</span>}
+                      {t.vote && <span class="xzqh-badge xzqh-badge--vote">投票</span>}
+                      {t.hasImage && <span class="xzqh-badge xzqh-badge--img">图</span>}
+                      {t.isNew && <span class="xzqh-badge xzqh-badge--new">NEW</span>}
+                    </span>
+                  )}
+                  <TypeTags
+                    tags={t.typeTags?.length ? t.typeTags : splitTitleTypes(t.title).typeTags}
+                    fid={data.fid}
+                  />
+                </div>
                 <a
                   class="title"
                   href={`read.php?tid=${t.tid}`}
@@ -544,38 +552,42 @@ export function ForumPage(props: { fid: number; page: number; type?: string; spe
                 </a>
               </div>
               <div class="xzqh-meta">
-                <UserNameLink
-                  name={t.author}
-                  uid={t.authorUid}
-                  username={t.authorUsername || t.author}
-                />
-                {t.postDate ? ` · ${t.postDate}` : ''}
-                {t.lastAuthor ? (
-                  <>
-                    {' · 最后 '}
-                    <UserNameLink
-                      name={t.lastAuthor}
-                      uid={t.lastAuthorUid}
-                      username={t.lastAuthorUsername || t.lastAuthor}
-                    />
-                  </>
-                ) : null}
-                {t.lastTime ? (
-                  <>
-                    {' '}
-                    <a
-                      class="xzqh-last-time"
-                      href={t.lastTimeHref || `read.php?tid=${t.tid}&page=e#a`}
-                      title="跳到最后回复"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        navigate({ name: 'thread', tid: t.tid, page: 9999 });
-                      }}
-                    >
-                      {t.lastTime}
-                    </a>
-                  </>
-                ) : null}
+                <div class="xzqh-meta-row">
+                  <UserNameLink
+                    name={t.author}
+                    uid={t.authorUid}
+                    username={t.authorUsername || t.author}
+                  />
+                  {t.postDate ? ` · ${t.postDate}` : ''}
+                </div>
+                {(t.lastAuthor || t.lastTime) && (
+                  <div class="xzqh-meta-row">
+                    最后{' '}
+                    {t.lastAuthor ? (
+                      <UserNameLink
+                        name={t.lastAuthor}
+                        uid={t.lastAuthorUid}
+                        username={t.lastAuthorUsername || t.lastAuthor}
+                      />
+                    ) : null}
+                    {t.lastTime ? (
+                      <>
+                        {' '}
+                        <a
+                          class="xzqh-last-time"
+                          href={t.lastTimeHref || `read.php?tid=${t.tid}&page=e#a`}
+                          title="跳到最后回复"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            navigate({ name: 'thread', tid: t.tid, page: 9999 });
+                          }}
+                        >
+                          {t.lastTime}
+                        </a>
+                      </>
+                    ) : null}
+                  </div>
+                )}
               </div>
             </div>
             <div class="xzqh-stats">
@@ -584,7 +596,7 @@ export function ForumPage(props: { fid: number; page: number; type?: string; spe
             </div>
           </div>
         ))}
-      </div>
+      </MasonryList>
       <Pager
         page={data.page}
         totalPages={data.totalPages}
@@ -595,6 +607,7 @@ export function ForumPage(props: { fid: number; page: number; type?: string; spe
             page: p,
             type: props.type,
             special: props.special,
+            search: props.search,
           })
         }
       />
@@ -608,9 +621,12 @@ export function ThreadPage(props: { tid: number; page: number; user: SessionUser
   const [data, setData] = useState<ThreadDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [reply, setReply] = useState('');
+  const [replyFlashAtts, setReplyFlashAtts] = useState<EditorFlashAtt[]>([]);
+  const [replyFocusToken, setReplyFocusToken] = useState(0);
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
   const voteBox = useRef<HTMLDivElement>(null);
+  const replyDraftKey = `xzqh_draft_reply_${props.tid}`;
 
   const reload = async (page = props.page) => {
     setLoading(true);
@@ -639,23 +655,40 @@ export function ThreadPage(props: { tid: number; page: number; user: SessionUser
 
   useEffect(() => {
     const el = voteBox.current;
-    if (!el) return;
-    const onSubmit = async (e: Event) => {
-      e.preventDefault();
-      const form = e.target as HTMLFormElement;
-      if (!(form instanceof HTMLFormElement) || !data) return;
+    if (!el || !data) return;
+
+    // 服务端投票 HTML 里的按钮依赖被剥离的原站 JS（vv.vote()）；
+    // 客户端自己接管点击，避免 ReferenceError 且不提交。
+    el.querySelectorAll('button, input[type="button"]').forEach((node) => {
+      const btn = node as HTMLElement;
+      if (/^\s*投票\s*$/.test(btn.textContent || '') || /^\s*投票\s*$/.test((node as HTMLInputElement).value || '')) {
+        btn.removeAttribute('onclick');
+      }
+    });
+
+    const collect = () => {
       const selected = [
-        ...form.querySelectorAll(
+        ...el.querySelectorAll(
           'input[name*=vote]:checked, input[type=radio]:checked, input[type=checkbox]:checked',
         ),
       ]
         .map((node) => (node as HTMLInputElement).value)
         .filter(Boolean);
       const extra: Record<string, string> = {};
-      for (const input of Array.from(form.elements) as HTMLInputElement[]) {
-        if (!input.name || input.type === 'submit') continue;
+      for (const input of Array.from(el.querySelectorAll('input, select')) as HTMLInputElement[]) {
+        if (!input.name || input.type === 'submit' || input.type === 'button') continue;
         if ((input.type === 'checkbox' || input.type === 'radio') && !input.checked) continue;
         extra[input.name] = input.value;
+      }
+      return { selected, extra };
+    };
+
+    const doVote = async () => {
+      if (!data) return;
+      const { selected, extra } = collect();
+      if (!selected.length) {
+        setMsg('请先选择投票选项');
+        return;
       }
       const r = await submitVote({
         tid: data.tid,
@@ -666,8 +699,27 @@ export function ThreadPage(props: { tid: number; page: number; user: SessionUser
       setMsg(r.message);
       if (r.ok) reload(data.page);
     };
+
+    const onClick = (e: Event) => {
+      const target = e.target as Element | null;
+      const btn = target?.closest?.('button, input[type="button"]') as HTMLElement | null;
+      if (!btn) return;
+      const text = (btn.textContent || '').trim() || (btn as HTMLInputElement).value || '';
+      if (!/^\s*投票\s*$/.test(text)) return;
+      e.preventDefault();
+      void doVote();
+    };
+    const onSubmit = (e: Event) => {
+      e.preventDefault();
+      void doVote();
+    };
+
+    el.addEventListener('click', onClick);
     el.addEventListener('submit', onSubmit);
-    return () => el.removeEventListener('submit', onSubmit);
+    return () => {
+      el.removeEventListener('click', onClick);
+      el.removeEventListener('submit', onSubmit);
+    };
   }, [data?.tid, data?.voteHtml, data?.verifyhash]);
 
   if (loading) return <Loading />;
@@ -685,20 +737,36 @@ export function ThreadPage(props: { tid: number; page: number; user: SessionUser
     );
   }
 
+  const focusQuickReply = () => setReplyFocusToken((n) => n + 1);
+
   const onReply = async () => {
-    if (!reply.trim()) return;
+    if (!reply.trim()) {
+      setMsg('请填写回复内容');
+      focusQuickReply();
+      return;
+    }
     setBusy(true);
     setMsg('');
     try {
       const form = await loadComposeForm({ fid: data.fid, tid: data.tid });
       const res = await submitPost({
         action: form.action,
-        fields: { ...form.fields, ...(data.replyForm || {}) },
+        fields: {
+          ...form.fields,
+          ...(data.replyForm || {}),
+          ...flashAttFields(replyFlashAtts),
+        },
         content: reply,
       });
       setMsg(res.message);
       if (res.ok) {
         setReply('');
+        setReplyFlashAtts([]);
+        try {
+          localStorage.removeItem(replyDraftKey);
+        } catch {
+          /* ignore */
+        }
         await reload(data.totalPages || props.page);
       }
     } catch (e) {
@@ -721,7 +789,7 @@ export function ThreadPage(props: { tid: number; page: number; user: SessionUser
               返回版块
             </button>
           )}
-          {data.canReply && (
+          {data.canReply && props.user?.loggedIn && (
             <button
               type="button"
               class="xzqh-btn primary"
@@ -748,10 +816,8 @@ export function ThreadPage(props: { tid: number; page: number; user: SessionUser
           title={data.title}
           typeTags={data.typeTags}
           fid={data.fid || undefined}
+          forumName={data.forumName}
         />
-        <p class="xzqh-sub">
-          {data.forumName || ''} · tid={data.tid}
-        </p>
         {msg && <Alert type={/成功|收藏成功/.test(msg) ? 'ok' : 'warn'}>{msg}</Alert>}
         <Pager
           page={data.page}
@@ -769,21 +835,53 @@ export function ThreadPage(props: { tid: number; page: number; user: SessionUser
 
       {data.floors.map((f) => (
         <FloorCard
-          key={`${f.pid}-${f.floor}`}
+          key={`${f.pidParam}-${f.floor}`}
           floor={f}
           tid={data.tid}
           fid={data.fid}
           verifyhash={data.verifyhash}
-          onQuote={() => setReply((prev) => wrapQuote(f.author, f.contentHtml) + prev)}
+          onQuote={() => {
+            setReply((prev) => wrapQuote(f.author, f.contentHtml) + prev);
+            focusQuickReply();
+          }}
           onDeleted={() => reload(data.page)}
         />
       ))}
 
-      {data.canReply && (
-        <div class="xzqh-panel">
-          <h2 style={{ marginTop: 0, fontSize: '1.05rem' }}>快速回复</h2>
+      {data.canReply && props.user?.loggedIn && (
+        <div class="xzqh-panel" id="xzqh-quick-reply">
+          <div class="xzqh-row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
+            <h2 style={{ margin: 0, fontSize: '1.05rem' }}>快速回复</h2>
+            <button
+              type="button"
+              class="xzqh-btn ghost"
+              onClick={() => navigate({ name: 'compose', fid: data.fid, tid: data.tid })}
+            >
+              完整回复
+            </button>
+          </div>
+          {msg && /请填写|失败|错误|不能|禁止|验证|权限/.test(msg) && !/成功|收藏/.test(msg) && (
+            <Alert type="error">{msg}</Alert>
+          )}
           <div class="xzqh-form">
-            <textarea value={reply} onInput={(e) => setReply((e.target as HTMLTextAreaElement).value)} placeholder="支持 Wind Code，如 [quote] [img] [url]" />
+            <WindEditor
+              value={reply}
+              onChange={setReply}
+              compact
+              minRows={6}
+              draftKey={replyDraftKey}
+              placeholder="支持 Wind Code；可点「完整」展开全部工具栏"
+              fid={data.fid || undefined}
+              verifyhash={data.verifyhash || props.user?.verifyhash || undefined}
+              flashAtts={replyFlashAtts}
+              onFlashAttsChange={setReplyFlashAtts}
+              focusToken={replyFocusToken}
+            />
+            {replyFlashAtts.length > 0 && (
+              <div class="xzqh-meta">
+                已上传 {replyFlashAtts.length} 个附件/图片，将随回复提交
+              </div>
+            )}
             <div class="xzqh-row">
               <button type="button" class="xzqh-btn primary" disabled={busy} onClick={onReply}>
                 {busy ? '提交中…' : '发表回复'}
@@ -807,7 +905,7 @@ function FloorCard(props: {
   const { floor: f } = props;
   const floorLabel = f.floor === 0 ? '楼主' : `${f.floor} 楼`;
   return (
-    <article class="xzqh-floor" id={`pid${f.pid}`}>
+    <article class="xzqh-floor" id={`pid${f.pidParam || f.pid}`}>
       <div class="xzqh-floor-hd">
         <div class="xzqh-floor-user">
           {f.avatarUrl ? (
@@ -825,14 +923,6 @@ function FloorCard(props: {
                     ? `u.php?uid=${f.authorUid}`
                     : `u.php?username=${encodeURIComponent(f.author)}`
                 }
-                onClick={(e) => {
-                  e.preventDefault();
-                  navigate({
-                    name: 'user',
-                    uid: f.authorUid,
-                    username: f.authorUid ? undefined : f.author,
-                  });
-                }}
               >
                 {f.author}
               </a>
@@ -863,7 +953,13 @@ function FloorCard(props: {
             type="button"
             class="xzqh-btn ghost"
             onClick={() =>
-              navigate({ name: 'compose', fid: props.fid, tid: props.tid, editPid: f.pid })
+              navigate({
+                name: 'compose',
+                fid: props.fid,
+                tid: props.tid,
+                editPid: f.pidParam,
+                article: f.article,
+              })
             }
           >
             编辑
@@ -876,8 +972,10 @@ function FloorCard(props: {
             onClick={async () => {
               if (!confirm('确认删除该楼层？')) return;
               const r = await deletePost({
+                fid: props.fid,
                 tid: props.tid,
-                pid: f.pid,
+                pid: f.pidParam,
+                article: f.article,
                 verifyhash: props.verifyhash,
               });
               alert(r.message);
@@ -1029,17 +1127,35 @@ function forumUrlSafe(): string {
 export function ComposePage(props: {
   fid: number;
   tid?: number;
-  quotePid?: number;
-  editPid?: number;
+  quotePid?: number | string;
+  editPid?: number | string;
+  article?: number;
 }) {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
-  const [preview, setPreview] = useState(false);
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
   const [meta, setMeta] = useState<Awaited<ReturnType<typeof loadComposeForm>> | null>(null);
   const [files, setFiles] = useState<File[]>([]);
   const [uploadMsg, setUploadMsg] = useState('');
+  const [flashAtts, setFlashAtts] = useState<EditorFlashAtt[]>([]);
+  const [attachBusy, setAttachBusy] = useState(false);
+  const [ptype, setPtype] = useState('');
+  const [settingsTab, setSettingsTab] = useState<'common' | 'tags' | 'sell' | 'advanced'>('common');
+  const [atcNewrp, setAtcNewrp] = useState(false);
+  const [atcAnonymous, setAtcAnonymous] = useState(false);
+  const [atcHide, setAtcHide] = useState(false);
+  const [usernames, setUsernames] = useState('');
+  const [tags, setTags] = useState('');
+  const [requireSell, setRequireSell] = useState(false);
+  const [sellMoney, setSellMoney] = useState('0');
+  const [requireEnhide, setRequireEnhide] = useState(false);
+  const [enhideRvrc, setEnhideRvrc] = useState('0');
+  const [useSign, setUseSign] = useState(true);
+  const [autoUrl, setAutoUrl] = useState(true);
+  const [convert, setConvert] = useState(true);
+
+  const draftKey = `xzqh_draft_compose_${props.fid}_${props.tid || 0}_${props.editPid || 0}`;
 
   useEffect(() => {
     loadComposeForm(props)
@@ -1047,34 +1163,90 @@ export function ComposePage(props: {
         setMeta(m);
         if (m.fields.atc_title) setTitle(m.fields.atc_title);
         if (m.fields.atc_content) setContent(m.fields.atc_content);
+        if (m.fields.p_type) setPtype(m.fields.p_type);
+        if (m.fields.atc_tags) setTags(m.fields.atc_tags);
+        if (m.fields.usernames) setUsernames(m.fields.usernames);
+        if (m.fields.atc_money) setSellMoney(m.fields.atc_money);
+        if (m.fields.atc_rvrc) setEnhideRvrc(m.fields.atc_rvrc);
+        setAtcNewrp(m.fields.atc_newrp === '1');
+        setAtcAnonymous(m.fields.atc_anonymous === '1');
+        setAtcHide(m.fields.atc_hide === '1');
+        setRequireSell(m.fields.atc_requiresell === '1');
+        setRequireEnhide(m.fields.atc_requireenhide === '1');
+        setUseSign(m.fields.atc_usesign !== '0');
+        setAutoUrl(m.fields.atc_autourl !== '0');
+        setConvert(m.fields.atc_convert !== '0');
       })
       .catch((e) => setMsg(e instanceof Error ? e.message : '无法打开编辑器'));
-  }, [props.fid, props.tid, props.quotePid, props.editPid]);
+  }, [props.fid, props.tid, props.quotePid, props.editPid, props.article]);
 
-  const smiles = useMemo(() => Array.from({ length: 14 }, (_, i) => i + 1), []);
+  const buildFields = () => {
+    if (!meta) return {};
+    const fields = { ...meta.fields };
+    if (ptype) fields.p_type = ptype;
+    else delete fields.p_type;
+
+    const setFlag = (name: string, on: boolean) => {
+      if (on) fields[name] = '1';
+      else delete fields[name];
+    };
+    setFlag('atc_newrp', atcNewrp);
+    setFlag('atc_anonymous', atcAnonymous && !!meta.options.anonymousEnabled);
+    setFlag('atc_hide', atcHide && !!meta.options.hideEnabled);
+    setFlag('atc_requiresell', requireSell && !!meta.options.sellEnabled);
+    setFlag('atc_requireenhide', requireEnhide && !!meta.options.enhideEnabled);
+    setFlag('atc_usesign', useSign);
+    setFlag('atc_autourl', autoUrl);
+    setFlag('atc_convert', convert);
+
+    fields.usernames = usernames.trim();
+    fields.atc_tags = tags.trim();
+    fields.atc_money = sellMoney || '0';
+    fields.atc_rvrc = enhideRvrc || '0';
+    Object.assign(fields, flashAttFields(flashAtts));
+    return fields;
+  };
+
+  const goAfterSuccess = (redirect?: string) => {
+    if (redirect && /tid=(\d+)/.test(redirect)) {
+      const tid = Number(redirect.match(/tid=(\d+)/)![1]);
+      navigate({ name: 'thread', tid, page: 9999 });
+    } else if (props.tid) {
+      navigate({ name: 'thread', tid: props.tid, page: 9999 });
+    } else {
+      navigate({ name: 'forum', fid: props.fid, page: 1 });
+    }
+  };
 
   const onSubmit = async () => {
     if (!meta) return;
+    if (meta.titleRequired && !title.trim()) {
+      setMsg('请填写标题');
+      return;
+    }
+    if (!content.trim()) {
+      setMsg('请填写内容');
+      return;
+    }
     setBusy(true);
     setMsg('');
     try {
       const res = await submitPost({
         action: meta.action,
-        fields: meta.fields,
-        title: meta.titleRequired ? title : undefined,
+        fields: buildFields(),
+        title: meta.showTitle ? title : undefined,
         content,
         files: files.length ? files : undefined,
       });
       setMsg(res.message);
       if (res.ok) {
-        if (res.redirect && /tid=(\d+)/.test(res.redirect)) {
-          const tid = Number(res.redirect.match(/tid=(\d+)/)![1]);
-          navigate({ name: 'thread', tid, page: 9999 });
-        } else if (props.tid) {
-          navigate({ name: 'thread', tid: props.tid, page: 9999 });
-        } else {
-          navigate({ name: 'forum', fid: props.fid, page: 1 });
+        try {
+          localStorage.removeItem(draftKey);
+        } catch {
+          /* ignore */
         }
+        setFlashAtts([]);
+        goAfterSuccess(res.redirect);
       }
     } catch (e) {
       setMsg(e instanceof Error ? e.message : '提交失败');
@@ -1084,78 +1256,290 @@ export function ComposePage(props: {
   };
 
   return (
-    <div class="xzqh-panel">
-      <h1 class="xzqh-h1">{props.editPid ? '编辑帖子' : props.tid ? '回复主题' : '发表新帖'}</h1>
+    <div class="xzqh-panel xzqh-compose">
+      <h1 class="xzqh-h1">{props.editPid ? '编辑帖子' : props.tid ? '回复主题' : '发表主题'}</h1>
       {msg && <Alert type={/成功|已提交/.test(msg) ? 'ok' : 'error'}>{msg}</Alert>}
       {!meta && !msg && <Loading />}
       {meta && (
         <div class="xzqh-form">
-          {meta.titleRequired && (
-            <label>
-              标题
-              <input value={title} onInput={(e) => setTitle((e.target as HTMLInputElement).value)} />
-            </label>
+          {meta.showTitle && (
+            <div class="xzqh-compose-title">
+              {meta.types.length > 0 && (
+                <select
+                  class="xzqh-compose-type"
+                  value={ptype}
+                  onChange={(e) => setPtype((e.target as HTMLSelectElement).value)}
+                  title="选择分类"
+                >
+                  <option value="">选择分类</option>
+                  {meta.types.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <input
+                class="xzqh-compose-title-input"
+                value={title}
+                placeholder="请输入标题"
+                onInput={(e) => setTitle((e.target as HTMLInputElement).value)}
+              />
+            </div>
           )}
-          <div class="xzqh-toolbar">
-            {smiles.map((n) => (
-              <button
-                type="button"
-                key={n}
-                class="xzqh-btn ghost"
-                title={`表情 ${n}`}
-                onClick={() => setContent((c) => c + `[s:${n}]`)}
-              >
-                <img src={`images/post/smile/default/${n}.gif`} alt="" width={18} height={18} />
-              </button>
-            ))}
-            <button type="button" class="xzqh-btn ghost" onClick={() => setContent((c) => c + '[b][/b]')}>
-              B
-            </button>
-            <button type="button" class="xzqh-btn ghost" onClick={() => setContent((c) => c + '[url][/url]')}>
-              链接
-            </button>
-            <button type="button" class="xzqh-btn ghost" onClick={() => setContent((c) => c + '[img][/img]')}>
-              图片
-            </button>
-            <button type="button" class="xzqh-btn ghost" onClick={() => setPreview((p) => !p)}>
-              {preview ? '编辑' : '预览'}
-            </button>
-          </div>
-          {preview ? (
-            <div class="xzqh-preview" dangerouslySetInnerHTML={{ __html: windcodeToHtml(content) }} />
-          ) : (
-            <textarea value={content} onInput={(e) => setContent((e.target as HTMLTextAreaElement).value)} />
-          )}
-          <label>
-            附件
+
+          <WindEditor
+            value={content}
+            onChange={setContent}
+            draftKey={draftKey}
+            minRows={16}
+            placeholder="在此输入正文，支持完整 Wind Code"
+            fid={props.fid}
+            verifyhash={meta.verifyhash}
+            uploadEnabled={meta.uploadEnabled}
+            flashAtts={flashAtts}
+            onFlashAttsChange={setFlashAtts}
+          />
+
+          {meta.uploadEnabled && (
+          <div class="xzqh-compose-attach">
+            <div class="xzqh-compose-attach-hd">
+              <strong>附件</strong>
+              <span class="xzqh-muted">对应原站「插入附件」（任意允许类型）；图片请优先用编辑器「图片」</span>
+            </div>
             <input
               type="file"
               multiple
               onChange={(e) => setFiles(Array.from((e.target as HTMLInputElement).files || []))}
             />
-          </label>
-          {meta.uploadEnabled && files[0] && (
+            {files.length > 0 && (
+              <ul class="xzqh-attach-list">
+                {files.map((f) => (
+                  <li key={f.name + f.size}>
+                    {f.name} · {(f.size / 1024).toFixed(1)} KB
+                    {isImageFile(f) ? ' · 图片' : ''}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {files.length > 0 && (
+              <button
+                type="button"
+                class="xzqh-btn ghost"
+                disabled={attachBusy}
+                onClick={async () => {
+                  setAttachBusy(true);
+                  setUploadMsg('');
+                  const uploaded: EditorFlashAtt[] = [...flashAtts];
+                  for (const file of files) {
+                    const r = await uploadMutiFile({
+                      file,
+                      verifyhash: meta.verifyhash,
+                      fid: props.fid,
+                      onProgress: (p) => setUploadMsg(`${file.name} ${p}%`),
+                    });
+                    if (!r.ok || !r.aid) {
+                      setUploadMsg(r.message || `${file.name} 上传失败`);
+                      continue;
+                    }
+                    const item: EditorFlashAtt = {
+                      aid: r.aid,
+                      name: file.name,
+                      path: r.path || r.url || '',
+                      kind: isImageFile(file) ? 'image' : 'file',
+                    };
+                    const i = uploaded.findIndex((x) => x.aid === item.aid);
+                    if (i >= 0) uploaded[i] = item;
+                    else uploaded.push(item);
+                    setContent(
+                      (c) => `${c}${c && !/\n$/.test(c) ? '\n' : ''}[attachment=${r.aid}]\n`,
+                    );
+                  }
+                  setFlashAtts(uploaded);
+                  setFiles([]);
+                  setUploadMsg(`已上传并插入 ${uploaded.length} 个附件`);
+                  setAttachBusy(false);
+                }}
+              >
+                {attachBusy ? '上传中…' : '上传所选附件并插入'}
+              </button>
+            )}
+            {flashAtts.length > 0 && (
+              <ul class="xzqh-attach-list">
+                {flashAtts.map((a) => (
+                  <li key={a.aid}>
+                    {a.kind === 'image' ? '图片' : '附件'} #{a.aid} · {a.name}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {uploadMsg && <div class="xzqh-meta">{uploadMsg}</div>}
+          </div>
+          )}
+
+          <div class="xzqh-compose-settings">
+            <div class="xzqh-compose-tabs" role="tablist">
+              {(
+                [
+                  ['common', '常用设置'],
+                  ['tags', '主题标签'],
+                  ['sell', '售密设置'],
+                  ['advanced', '高级'],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  type="button"
+                  key={id}
+                  role="tab"
+                  class={`xzqh-compose-tab${settingsTab === id ? ' active' : ''}`}
+                  aria-selected={settingsTab === id}
+                  onClick={() => setSettingsTab(id)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div class="xzqh-compose-tabpanel">
+              {settingsTab === 'common' && (
+                <>
+                  <label class="xzqh-check">
+                    <input
+                      type="checkbox"
+                      checked={atcNewrp}
+                      onChange={(e) => setAtcNewrp((e.target as HTMLInputElement).checked)}
+                    />
+                    回复站内短信提醒
+                  </label>
+                  <label class={`xzqh-check${meta.options.anonymousEnabled ? '' : ' is-disabled'}`}>
+                    <input
+                      type="checkbox"
+                      disabled={!meta.options.anonymousEnabled}
+                      checked={atcAnonymous}
+                      onChange={(e) => setAtcAnonymous((e.target as HTMLInputElement).checked)}
+                    />
+                    匿名帖
+                  </label>
+                  <label class={`xzqh-check${meta.options.hideEnabled ? '' : ' is-disabled'}`}>
+                    <input
+                      type="checkbox"
+                      disabled={!meta.options.hideEnabled}
+                      checked={atcHide}
+                      onChange={(e) => setAtcHide((e.target as HTMLInputElement).checked)}
+                    />
+                    隐藏此帖（回复可见）
+                  </label>
+                  <label>
+                    提到某人
+                    <input
+                      value={usernames}
+                      placeholder="用户名，多个用空格或逗号分隔"
+                      onInput={(e) => setUsernames((e.target as HTMLInputElement).value)}
+                    />
+                  </label>
+                </>
+              )}
+              {settingsTab === 'tags' && (
+                <label>
+                  主题标签
+                  <input
+                    value={tags}
+                    placeholder="多个标签用空格分隔"
+                    onInput={(e) => setTags((e.target as HTMLInputElement).value)}
+                  />
+                </label>
+              )}
+              {settingsTab === 'sell' && (
+                <>
+                  <label class={`xzqh-check${meta.options.sellEnabled ? '' : ' is-disabled'}`}>
+                    <input
+                      type="checkbox"
+                      disabled={!meta.options.sellEnabled}
+                      checked={requireSell}
+                      onChange={(e) => setRequireSell((e.target as HTMLInputElement).checked)}
+                    />
+                    出售帖
+                  </label>
+                  <label>
+                    出售：货币
+                    <input
+                      value={sellMoney}
+                      disabled={!meta.options.sellEnabled}
+                      onInput={(e) => setSellMoney((e.target as HTMLInputElement).value)}
+                    />
+                  </label>
+                  <label class={`xzqh-check${meta.options.enhideEnabled ? '' : ' is-disabled'}`}>
+                    <input
+                      type="checkbox"
+                      disabled={!meta.options.enhideEnabled}
+                      checked={requireEnhide}
+                      onChange={(e) => setRequireEnhide((e.target as HTMLInputElement).checked)}
+                    />
+                    加密浏览
+                  </label>
+                  <label>
+                    加密：威望以上才能浏览
+                    <input
+                      value={enhideRvrc}
+                      disabled={!meta.options.enhideEnabled}
+                      onInput={(e) => setEnhideRvrc((e.target as HTMLInputElement).value)}
+                    />
+                  </label>
+                  {!meta.options.sellEnabled && !meta.options.enhideEnabled && (
+                    <p class="xzqh-muted">当前用户组不可用售密设置（与原站一致）。</p>
+                  )}
+                </>
+              )}
+              {settingsTab === 'advanced' && (
+                <>
+                  <label class="xzqh-check">
+                    <input
+                      type="checkbox"
+                      checked={useSign}
+                      onChange={(e) => setUseSign((e.target as HTMLInputElement).checked)}
+                    />
+                    使用帖子签名
+                  </label>
+                  <label class="xzqh-check">
+                    <input
+                      type="checkbox"
+                      checked={autoUrl}
+                      onChange={(e) => setAutoUrl((e.target as HTMLInputElement).checked)}
+                    />
+                    自动解析链接 URL
+                  </label>
+                  <label class="xzqh-check">
+                    <input
+                      type="checkbox"
+                      checked={convert}
+                      onChange={(e) => setConvert((e.target as HTMLInputElement).checked)}
+                    />
+                    WindCode 转换
+                  </label>
+                </>
+              )}
+            </div>
+          </div>
+
+          <div class="xzqh-row xzqh-compose-actions">
+            <button type="button" class="xzqh-btn primary xzqh-btn-lg" disabled={busy} onClick={onSubmit}>
+              {busy ? '提交中…' : '发布'}
+            </button>
             <button
               type="button"
               class="xzqh-btn ghost"
-              onClick={async () => {
-                const r = await uploadAttachment({
-                  file: files[0],
-                  verifyhash: meta.verifyhash,
-                  fid: props.fid,
-                  tid: props.tid,
-                  onProgress: (p) => setUploadMsg(`上传 ${p}%`),
-                });
-                setUploadMsg(r.message + (r.url ? ` ${r.url}` : ''));
+              onClick={() => {
+                try {
+                  localStorage.setItem(
+                    draftKey,
+                    JSON.stringify({ content, title, savedAt: Date.now() }),
+                  );
+                  setMsg('已存为本地草稿');
+                } catch {
+                  setMsg('草稿保存失败');
+                }
               }}
             >
-              预上传测试
-            </button>
-          )}
-          {uploadMsg && <div class="xzqh-meta">{uploadMsg}</div>}
-          <div class="xzqh-row">
-            <button type="button" class="xzqh-btn primary" disabled={busy} onClick={onSubmit}>
-              {busy ? '提交中…' : '提交'}
+              存为草稿
             </button>
             <button
               type="button"
@@ -1210,8 +1594,16 @@ export function SearchPage(props: { keyword?: string; digest?: boolean; schTime?
         class="xzqh-form"
         onSubmit={(e) => {
           e.preventDefault();
-          navigate({ name: 'search', keyword });
-          run(keyword);
+          const kw = keyword.trim();
+          if (!kw) {
+            setErr('请输入搜索关键词');
+            return;
+          }
+          const sameQuery =
+            (props.keyword || '') === kw && !props.digest && !props.schTime;
+          navigate({ name: 'search', keyword: kw });
+          // navigate 后 URL 未变化时 effect 不会重跑，这里补一次；否则会重复请求。
+          if (sameQuery) run(kw);
         }}
       >
         <label>
@@ -1232,7 +1624,10 @@ export function SearchPage(props: { keyword?: string; digest?: boolean; schTime?
       </form>
       {loading && <Loading />}
       {err && <Alert type="error">{err}</Alert>}
-      <div class="xzqh-list" style={{ marginTop: 12 }}>
+      <MasonryList
+        style={{ marginTop: 12 }}
+        layoutKey={items.map((t) => t.tid).join(',')}
+      >
         {items.map((t) => (
           <div class="xzqh-item" key={t.tid}>
             <a
@@ -1248,7 +1643,7 @@ export function SearchPage(props: { keyword?: string; digest?: boolean; schTime?
             <div class="xzqh-meta">{t.author || ''}</div>
           </div>
         ))}
-      </div>
+      </MasonryList>
     </div>
   );
 }
@@ -1438,9 +1833,6 @@ export function SettingsPage() {
 
       <section class="xzqh-settings-block xzqh-settings-liststyle">
         <h2 class="xzqh-settings-title">列表样式</h2>
-        <p class="xzqh-meta" style={{ marginBottom: 10 }}>
-          宽屏可切换；窄屏固定卡片式。
-        </p>
         <div class="xzqh-seg">
           {LIST_STYLE_OPTIONS.map((opt) => (
             <button
@@ -1453,6 +1845,40 @@ export function SettingsPage() {
               <span>{opt.desc}</span>
             </button>
           ))}
+        </div>
+      </section>
+
+      <section class="xzqh-settings-block xzqh-settings-fontsize">
+        <h2 class="xzqh-settings-title">显示字号</h2>
+        <div class="xzqh-font-scale">
+          <span class="xzqh-font-scale-edge">-100%</span>
+          <input
+            class="xzqh-font-scale-range"
+            type="range"
+            min={-100}
+            max={100}
+            step={1}
+            value={prefs.fontScale}
+            aria-label="显示字号"
+            onInput={(e) =>
+              setPrefs(savePrefs({ fontScale: Number((e.target as HTMLInputElement).value) }))
+            }
+          />
+          <span class="xzqh-font-scale-edge">+100%</span>
+        </div>
+        <div class="xzqh-font-scale-readout">
+          {prefs.fontScale > 0 ? '+' : ''}
+          {prefs.fontScale}% · 约 {fontScaleToPx(prefs.fontScale)}px
+          {prefs.fontScale !== 0 && (
+            <button
+              type="button"
+              class="xzqh-btn ghost"
+              style={{ marginLeft: 8, padding: '2px 8px' }}
+              onClick={() => setPrefs(savePrefs({ fontScale: 0 }))}
+            >
+              复位
+            </button>
+          )}
         </div>
       </section>
 
@@ -1482,9 +1908,6 @@ export function SettingsPage() {
             重新启用客户端
           </button>
         </div>
-        <p class="xzqh-meta" style={{ marginTop: 12 }}>
-          控制台执行 <code>localStorage.removeItem('xzqh_client_disabled')</code> 也可重新启用。
-        </p>
       </section>
     </div>
   );

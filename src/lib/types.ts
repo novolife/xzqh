@@ -94,7 +94,11 @@ export interface ThreadListResult {
 
 export interface PostFloor {
   pid: number;
+  /** 原站 pid 参数；楼主为 'tpc'，与原站编辑/删除链接一致 */
+  pidParam: string;
   floor: number;
+  /** 原站编辑链接 article=，通常等于显示楼层号；楼主为 0 */
+  article?: number;
   author: string;
   authorUid?: number;
   avatarUrl?: string;
@@ -130,6 +134,8 @@ export interface ThreadDetail {
   isVote: boolean;
   voteHtml?: string;
   verifyhash: string;
+  /** 读帖页快速回复表单的 action（通常 post.php?fid=...） */
+  replyAction?: string;
   replyForm?: Record<string, string>;
   error?: ForumError;
 }
@@ -168,19 +174,43 @@ export interface MessageItem {
   href: string;
 }
 
+export interface ComposeTypeOption {
+  id: string;
+  name: string;
+}
+
 export interface PostFormMeta {
   action: string;
   fields: Record<string, string>;
   verifyhash: string;
+  /** 新主题必须填写标题 */
   titleRequired: boolean;
+  /** 是否显示标题编辑框（新主题/编辑主题首楼） */
+  showTitle: boolean;
   uploadEnabled: boolean;
+  types: ComposeTypeOption[];
+  options: {
+    anonymousEnabled: boolean;
+    hideEnabled: boolean;
+    sellEnabled: boolean;
+    enhideEnabled: boolean;
+  };
 }
 
 export type Route =
   | { name: 'home' }
-  | { name: 'forum'; fid: number; page: number; type?: string; special?: string }
+  | { name: 'forum'; fid: number; page: number; type?: string; special?: string; search?: string }
   | { name: 'thread'; tid: number; page: number }
-  | { name: 'compose'; fid: number; tid?: number; quotePid?: number; editPid?: number }
+  | {
+      name: 'compose';
+      fid: number;
+      tid?: number;
+      /** 原站 pid 参数；楼主为 'tpc' */
+      quotePid?: number | string;
+      /** 原站 pid 参数；楼主为 'tpc' */
+      editPid?: number | string;
+      article?: number;
+    }
   | { name: 'search'; keyword?: string; digest?: boolean; schTime?: string }
   | { name: 'user'; uid?: number; username?: string }
   | { name: 'messages' }

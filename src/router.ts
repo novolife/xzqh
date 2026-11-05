@@ -34,8 +34,12 @@ export function parseLocation(href: string = location.href): Route {
       name: 'compose',
       fid: Number(q.get('fid') || 0),
       tid: q.get('tid') ? Number(q.get('tid')) : undefined,
-      quotePid: q.get('action') === 'quote' && q.get('pid') ? Number(q.get('pid')) : undefined,
-      editPid: q.get('action') === 'modify' && q.get('pid') ? Number(q.get('pid')) : undefined,
+      // Keep original pid string: topic first floor uses pid=tpc, not a number.
+      quotePid:
+        q.get('action') === 'quote' && q.get('pid') ? q.get('pid')! : undefined,
+      editPid:
+        q.get('action') === 'modify' && q.get('pid') ? q.get('pid')! : undefined,
+      article: q.get('article') ? Number(q.get('article')) : undefined,
     };
   }
   // IMPORTANT: test thread.php BEFORE read.php — "thread.php".endsWith("read.php") === true
@@ -46,6 +50,7 @@ export function parseLocation(href: string = location.href): Route {
       page: Number(q.get('page') || 1) || 1,
       type: q.get('type') || undefined,
       special: q.get('special') || undefined,
+      search: q.get('search') || undefined,
     };
   }
   if (/(^|\/)read\.php$/i.test(path)) {
@@ -64,7 +69,7 @@ export function routeToUrl(route: Route): string {
     case 'home':
       return `${BASE_PATH}index.php`;
     case 'forum':
-      return `${BASE_PATH}thread.php?fid=${route.fid}&page=${route.page}${route.type ? `&type=${route.type}` : ''}${route.special ? `&special=${route.special}` : ''}`;
+      return `${BASE_PATH}thread.php?fid=${route.fid}&page=${route.page}${route.type ? `&type=${route.type}` : ''}${route.special ? `&special=${route.special}` : ''}${route.search ? `&search=${route.search}` : ''}`;
     case 'thread': {
       const page = route.page >= 9999 ? 'e' : String(route.page);
       return `${BASE_PATH}read.php?tid=${route.tid}&page=${page}${route.page >= 9999 ? '#a' : ''}`;
@@ -73,14 +78,21 @@ export function routeToUrl(route: Route): string {
       const p = new URLSearchParams();
       if (route.editPid && route.tid) {
         p.set('action', 'modify');
+        if (route.fid) p.set('fid', String(route.fid));
         p.set('tid', String(route.tid));
         p.set('pid', String(route.editPid));
+        if (route.article != null) p.set('article', String(route.article));
       } else {
         p.set('fid', String(route.fid));
         if (route.tid) p.set('tid', String(route.tid));
         if (route.quotePid) {
           p.set('action', 'quote');
           p.set('pid', String(route.quotePid));
+          if (route.article != null) p.set('article', String(route.article));
+        } else if (route.tid) {
+          // Plain reply MUST be action=reply; without it phpwind renders the
+          // new-topic form and submissions create a new thread instead.
+          p.set('action', 'reply');
         }
       }
       return `${BASE_PATH}post.php?${p.toString()}`;
@@ -108,6 +120,20 @@ export function routeToUrl(route: Route): string {
   }
 }
 
+function urlsEqual(a: string, b: string): boolean {
+  try {
+    const ua = new URL(a, location.origin);
+    const ub = new URL(b, location.origin);
+    return (
+      ua.pathname === ub.pathname &&
+      ua.search === ub.search &&
+      ua.hash === ub.hash
+    );
+  } catch {
+    return a === b;
+  }
+}
+
 export function navigate(route: Route, replace = false): void {
   if (route.name === 'thread' && !route.tid) {
     route = { name: 'home' };
@@ -116,12 +142,19 @@ export function navigate(route: Route, replace = false): void {
     route = { name: 'home' };
   }
   const url = routeToUrl(route);
+  // 同一地址不重复压栈，避免后退要点两次
+  if (!replace && urlsEqual(url, location.href)) {
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    return;
+  }
   if (replace) history.replaceState({ xzqh: true }, '', url);
   else history.pushState({ xzqh: true }, '', url);
   window.dispatchEvent(new PopStateEvent('popstate'));
 }
 
 export function linkClickHandler(e: MouseEvent): void {
+  // 元素自身 onClick 已 preventDefault + navigate 时不再处理，否则会 push 两次
+  if (e.defaultPrevented) return;
   const t = e.target as HTMLElement | null;
   const a = t?.closest?.('a') as HTMLAnchorElement | null;
   if (!a || a.target === '_blank' || a.hasAttribute('download')) return;
@@ -137,6 +170,8 @@ export function linkClickHandler(e: MouseEvent): void {
   if (!url.pathname.includes('/lt/')) return;
   // let browser handle non-forum assets
   if (/\.(gif|png|jpg|jpeg|zip|rar|pdf)$/i.test(url.pathname)) return;
+  // 用户页 / 资料设置 / 私信交给原站，整页跳转
+  if (/(^|\/)(u|profile|message)\.php$/i.test(url.pathname)) return;
   e.preventDefault();
   const route = parseLocation(url.href);
   navigate(route);

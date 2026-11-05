@@ -25,17 +25,39 @@ export async function fetchHtml(
   init: RequestInit = {},
 ): Promise<{ html: string; url: string; status: number }> {
   const url = forumUrl(path);
-  const res = await fetch(url, {
-    credentials: 'include',
-    ...init,
-    headers: {
-      Accept: 'text/html,application/xhtml+xml,*/*',
-      ...(init.headers || {}),
-    },
-  });
-  const buf = await res.arrayBuffer();
-  const html = decodeForumText(buf);
-  return { html, url: res.url || url, status: res.status };
+  const controller = init.signal ? null : new AbortController();
+  const timer = controller
+    ? window.setTimeout(() => controller.abort(), 20000)
+    : 0;
+  try {
+    const res = await fetch(url, {
+      credentials: 'include',
+      ...init,
+      signal: init.signal ?? controller?.signal,
+      headers: {
+        Accept: 'text/html,application/xhtml+xml,*/*',
+        ...(init.headers || {}),
+      },
+    });
+    if (!res.ok) {
+      throw new Error(`服务器返回 HTTP ${res.status}`);
+    }
+    // 会话失效时 phpwind 可能 302 到登录页；对非登录请求直接提示重新登录。
+    const finalUrl = res.url || url;
+    if (!/login\.php/i.test(path) && /\/login\.php(\?|$)/i.test(finalUrl)) {
+      throw new Error('登录已过期，请重新登录');
+    }
+    const buf = await res.arrayBuffer();
+    const html = decodeForumText(buf);
+    return { html, url: finalUrl, status: res.status };
+  } catch (e) {
+    if (controller?.signal.aborted) {
+      throw new Error('请求超时，请检查网络后重试');
+    }
+    throw e;
+  } finally {
+    if (timer) window.clearTimeout(timer);
+  }
 }
 
 /**
@@ -106,7 +128,18 @@ function postViaGbkForm(
       reject(new Error('提交超时'));
     }, 30000);
 
+    let settled = false;
     iframe.addEventListener('load', () => {
+      // 新建 iframe 会先加载 about:blank 并触发一次 load；忽略第一次空白 load，
+      // 否则会把空响应当成提交结果，造成“服务器已成功但客户端报失败/重复提交”。
+      try {
+        const href = iframe.contentWindow?.location?.href || '';
+        if (!settled && (href === 'about:blank' || href === '')) return;
+      } catch {
+        /* ignore */
+      }
+      if (settled) return;
+      settled = true;
       window.clearTimeout(timer);
       try {
         const idoc = iframe.contentDocument || iframe.contentWindow?.document;

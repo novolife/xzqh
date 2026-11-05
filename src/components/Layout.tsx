@@ -1,17 +1,14 @@
 import type { ComponentChildren } from 'preact';
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import type { SessionUser } from '@/lib/types';
 import { navigate } from '@/router';
 import { forumUrl } from '@/lib/http';
 import {
-  LIST_STYLE_OPTIONS,
+  FONT_SCALE_NARROW_MQ,
   PREFS_EVENT,
-  THEME_OPTIONS,
+  applyFontSizeToDocument,
   loadPrefs,
-  savePrefs,
   type ClientPrefs,
-  type ListStyleId,
-  type ThemeId,
 } from '@/lib/prefs';
 import { BOARD_MENU_STATE_EVENT, toggleBoardMenu } from '@/lib/boardMenu';
 
@@ -24,23 +21,36 @@ export function Layout(props: {
   unread?: number;
   /** List/card switch only makes sense on list pages, not thread read. */
   showListStyle?: boolean;
+  /** 当前是否在客户端设置页；再点「设置」退出。 */
+  settingsOpen?: boolean;
 }) {
-  const { user, children, onLogout, unread, showListStyle = true } = props;
+  const { user, children, onLogout, unread, showListStyle = true, settingsOpen = false } = props;
   const [prefs, setPrefs] = useState<ClientPrefs>(() => loadPrefs());
   const [boardMenu, setBoardMenu] = useState({ available: false, open: false });
+  const topRef = useRef<HTMLElement>(null);
   const [narrow, setNarrow] = useState(() => {
     try {
-      return window.matchMedia('(max-width: 860px)').matches;
+      return window.matchMedia(FONT_SCALE_NARROW_MQ).matches;
     } catch {
       return false;
     }
   });
 
+  const syncTopHeight = () => {
+    const h = topRef.current?.getBoundingClientRect().height || 0;
+    const px = Math.ceil(h);
+    document.documentElement.style.setProperty('--xzqh-top-h', `${px || 112}px`);
+  };
+
   useEffect(() => {
     const sync = (e?: Event) => {
       const detail = (e as CustomEvent<ClientPrefs> | undefined)?.detail;
-      setPrefs(detail || loadPrefs());
+      const next = detail || loadPrefs();
+      setPrefs(next);
+      applyFontSizeToDocument(next.fontScale);
+      requestAnimationFrame(syncTopHeight);
     };
+    applyFontSizeToDocument(loadPrefs().fontScale);
     window.addEventListener(PREFS_EVENT, sync as EventListener);
     window.addEventListener('storage', sync);
     return () => {
@@ -48,6 +58,19 @@ export function Layout(props: {
       window.removeEventListener('storage', sync);
     };
   }, []);
+
+  useEffect(() => {
+    const el = topRef.current;
+    syncTopHeight();
+    if (!el) return;
+    const ro = new ResizeObserver(() => syncTopHeight());
+    ro.observe(el);
+    window.addEventListener('resize', syncTopHeight);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', syncTopHeight);
+    };
+  }, [prefs.fontScale, narrow]);
 
   useEffect(() => {
     const onState = (e: Event) => {
@@ -60,14 +83,16 @@ export function Layout(props: {
   }, []);
 
   useEffect(() => {
-    const mq = window.matchMedia('(max-width: 860px)');
-    const onChange = () => setNarrow(mq.matches);
+    const mq = window.matchMedia(FONT_SCALE_NARROW_MQ);
+    const onChange = () => {
+      setNarrow(mq.matches);
+      applyFontSizeToDocument(loadPrefs().fontScale);
+    };
     onChange();
     mq.addEventListener('change', onChange);
     return () => mq.removeEventListener('change', onChange);
   }, []);
 
-  const allowListStyleSwitch = showListStyle && !narrow;
   const effectiveList = !showListStyle ? 'list' : narrow ? 'card' : prefs.listStyle;
 
   return (
@@ -75,9 +100,10 @@ export function Layout(props: {
       class="xzqh-app"
       data-theme={prefs.theme}
       data-list={effectiveList}
+      data-font-scale={String(prefs.fontScale)}
       data-narrow={narrow ? '1' : '0'}
     >
-      <header class="xzqh-top">
+      <header class="xzqh-top" ref={topRef}>
         <div class="xzqh-top-brandbar">
           <div class="xzqh-top-inner">
             <a
@@ -100,16 +126,10 @@ export function Layout(props: {
               <a href="searcher.php" onClick={(e) => { e.preventDefault(); navigate({ name: 'search' }); }}>搜索</a>
               {user?.loggedIn ? (
                 <>
-                  <a href="message.php" onClick={(e) => { e.preventDefault(); navigate({ name: 'messages' }); }}>
+                  <a href="message.php">
                     私信{(unread ?? 0) > 0 ? `(${unread})` : ''}
                   </a>
-                  <a
-                    href={user.uid ? `u.php?uid=${user.uid}` : 'u.php'}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      navigate({ name: 'user', uid: user.uid || undefined, username: user.username });
-                    }}
-                  >
+                  <a href={user.uid ? `u.php?uid=${user.uid}` : 'u.php'}>
                     {user.username}
                   </a>
                   <button type="button" class="xzqh-btn" onClick={onLogout}>退出</button>
@@ -119,37 +139,21 @@ export function Layout(props: {
                   登录
                 </button>
               )}
-              <label class="xzqh-pref-inline" title="配色主题">
-                <span class="xzqh-sr-only">主题</span>
-                <select
-                  value={prefs.theme}
-                  onChange={(e) => setPrefs(savePrefs({ theme: (e.currentTarget as HTMLSelectElement).value as ThemeId }))}
-                >
-                  {THEME_OPTIONS.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {allowListStyleSwitch && (
-                <label class="xzqh-pref-inline" title="列表样式">
-                  <span class="xzqh-sr-only">列表</span>
-                  <select
-                    value={prefs.listStyle}
-                    onChange={(e) =>
-                      setPrefs(savePrefs({ listStyle: (e.currentTarget as HTMLSelectElement).value as ListStyleId }))
-                    }
-                  >
-                    {LIST_STYLE_OPTIONS.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
-              <button type="button" class="xzqh-btn" onClick={() => navigate({ name: 'settings' })}>设置</button>
+              <button
+                type="button"
+                class={`xzqh-btn${settingsOpen ? ' primary' : ''}`}
+                aria-pressed={settingsOpen}
+                onClick={() => {
+                  if (settingsOpen) {
+                    if (history.state?.xzqh && history.length > 1) history.back();
+                    else navigate({ name: 'home' }, true);
+                    return;
+                  }
+                  navigate({ name: 'settings' });
+                }}
+              >
+                设置
+              </button>
             </nav>
             {boardMenu.available && (
               <button

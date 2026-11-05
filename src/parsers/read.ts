@@ -4,7 +4,7 @@ import { detectShowMsg } from './showmsg';
 import { parseVerifyhash } from './index';
 import { parseMaxPage, extractPostForm } from './thread';
 import { enhanceContentHtml } from '@/windcode';
-import { splitTitleTypes } from '@/lib/title';
+import { splitTitleTypes, stripForumTitlePrefix } from '@/lib/title';
 import type { ThreadTypeTag } from '@/lib/types';
 
 export function parseThreadDetail(html: string, doc: Document, tid: number, page: number): ThreadDetail {
@@ -27,40 +27,59 @@ export function parseThreadDetail(html: string, doc: Document, tid: number, page
     };
   }
 
+  // Prefer on-page subject (has [分类] link); document.title wrongly embeds 版块名.
   const rawTitle =
+    extractSubjectTitle(doc) ||
     cleanTitle(doc.title) ||
-    doc.querySelector('h1, .read_h1, #subject_tpc, span#subject_tpc')?.textContent?.trim() ||
     '';
 
   // Category links near subject, e.g. [欧洲其他]
   const typeTags: ThreadTypeTag[] = [];
   for (const a of doc.querySelectorAll(
-    '#breadCrumb a[href*="type="], .breadCrumb a[href*="type="], a.view[href*="type="], h1 a[href*="type="]',
+    '#breadCrumb a[href*="type="], .breadCrumb a[href*="type="], a.view[href*="type="], h1 a[href*="type="], #subject_tpc a[href*="type="]',
   )) {
     const href = a.getAttribute('href') || '';
     const name = (a.textContent || '').replace(/[\[\]【】]/g, '').trim();
     const typeId = href.match(/[?&]type=(\d+)/)?.[1];
-    if (!name) continue;
+    if (!name || /倒序|收藏|复制/.test(name)) continue;
     if (!typeTags.some((t) => t.name === name)) typeTags.push({ name, typeId, href });
   }
   const split = splitTitleTypes(rawTitle);
   for (const t of split.typeTags) {
     if (!typeTags.some((x) => x.name === t.name)) typeTags.push(t);
   }
-  const title = typeTags.length ? split.title || rawTitle : rawTitle;
+  let title = typeTags.length ? split.title || rawTitle : rawTitle;
+
+  const crumbForum = [...doc.querySelectorAll('#breadCrumb a, .breadCrumb a')].find((a) => {
+    const href = a.getAttribute('href') || '';
+    return /thread\.php\?[^#]*\bfid=\d+/i.test(href) && !/[?&]type=/.test(href);
+  });
+  const forumName =
+    crumbForum?.textContent?.trim() ||
+    [...doc.querySelectorAll('#breadCrumb a, .breadCrumb a')]
+      .map((a) => ({
+        text: a.textContent?.trim() || '',
+        href: a.getAttribute('href') || '',
+      }))
+      .filter(
+        (t) =>
+          t.text &&
+          t.text !== '方舆' &&
+          !/新帖|精华/.test(t.text) &&
+          !/read\.php\?.*\btid=/i.test(t.href),
+      )
+      .map((t) => t.text)[0];
 
   const fid = Number(
-    html.match(/\bfid\s*=\s*['"]?(\d+)/i)?.[1] ||
+    crumbForum?.getAttribute('href')?.match(/fid=(\d+)/)?.[1] ||
+      html.match(/\bfid\s*=\s*['"]?(\d+)/i)?.[1] ||
       (doc.querySelector('a[href*="thread.php?fid="]') as HTMLAnchorElement | null)?.href?.match(
         /fid=(\d+)/,
       )?.[1] ||
       0,
   );
 
-  const forumName = [...doc.querySelectorAll('#breadCrumb a, .breadCrumb a')]
-    .map((a) => a.textContent?.trim() || '')
-    .filter((t) => t && t !== '方舆' && !/新帖|精华/.test(t))
-    .pop();
+  title = stripForumTitlePrefix(title, forumName);
 
   const floors = parseFloors(doc);
   const totalPages = parseMaxPage(doc);
@@ -84,6 +103,9 @@ export function parseThreadDetail(html: string, doc: Document, tid: number, page
     }
     if (verifyhash) replyFields.verify = verifyhash;
   }
+  // 原站脚本会把 _hexie 占位值替换成真实值；DOMParser 不执行脚本，需手动提取。
+  const hexie = html.match(/document\.FORM\._hexie\.value\s*=\s*'([^']+)'/i)?.[1];
+  if (replyFields && hexie) replyFields._hexie = hexie;
 
   return {
     tid,
@@ -99,6 +121,7 @@ export function parseThreadDetail(html: string, doc: Document, tid: number, page
     isVote,
     voteHtml,
     verifyhash,
+    replyAction: replyForm?.action || (fast?.getAttribute('action') || undefined),
     replyForm: replyFields,
   };
 }
@@ -108,6 +131,21 @@ function cleanTitle(t: string): string {
     .replace(/\s*-?\s*Powered by phpwind.*/i, '')
     .replace(/^方舆\s*-?\s*/, '')
     .trim();
+}
+
+/** Subject from read page h1, without [复制链接] and other chrome. */
+function extractSubjectTitle(doc: Document): string {
+  const el =
+    doc.querySelector('#subject_tpc, span#subject_tpc, h1.read_h1, .read_h1') ||
+    doc.querySelector('h1');
+  if (!el) return '';
+  const clone = el.cloneNode(true) as HTMLElement;
+  for (const n of clone.querySelectorAll(
+    'a.gray, a[onclick*="copyUrl"], a[title*="复制"], script, style',
+  )) {
+    n.remove();
+  }
+  return (clone.textContent || '').replace(/\s+/g, ' ').trim();
 }
 
 /**
@@ -186,13 +224,34 @@ function parseReadFloor(el: Element, idx: number): PostFloor | null {
   // Display 楼主 as floor 0 → UI can show 楼主; keep numeric: 0 for OP, else N
   const displayFloor = /readfloor_tpc/i.test(el.id) || contentEl.id === 'read_tpc' ? 0 : floor || idx;
 
-  // pid from readfloor_123 / read_123 / name=post_123
+  // Prefer real post id from edit/quote links or read_{pid} / post_{pid}
+  const editHref =
+    (el.querySelector('a[href*="action=modify"]') as HTMLAnchorElement | null)?.getAttribute('href') ||
+    '';
+  const quoteHref =
+    (el.querySelector('a[href*="action=quote"]') as HTMLAnchorElement | null)?.getAttribute('href') ||
+    '';
+  // pid 既可能是数字，也可能是楼主首楼的 'tpc'，必须保留原始字符串。
+  const linkPidRaw =
+    editHref.match(/[?&]pid=([^&#]+)/)?.[1] ||
+    quoteHref.match(/[?&]pid=([^&#]+)/)?.[1] ||
+    '';
+  const linkPid = /^\d+$/.test(linkPidRaw) ? Number(linkPidRaw) : 0;
+  const articleMatch =
+    editHref.match(/[?&]article=(\d+)/) || quoteHref.match(/[?&]article=(\d+)/);
+  const articleFromLink = articleMatch ? Number(articleMatch[1]) : undefined;
   const pid = Number(
-    (el.id || '').match(/readfloor_(\d+)/)?.[1] ||
+    linkPid ||
       (contentEl.id || '').match(/^read_(\d+)$/)?.[1] ||
+      (el.id || '').match(/readfloor_(\d+)/)?.[1] ||
       (el.querySelector('a[name^="post_"]')?.getAttribute('name') || '').match(/post_(\d+)/)?.[1] ||
+      (el.querySelector('a[name^="a"][name*="ajax"]')?.getAttribute('name') || '').match(/(\d+)/)?.[1] ||
       0,
   );
+  const pidParam =
+    linkPidRaw ||
+    (pid ? String(pid) : '') ||
+    (/readfloor_tpc/i.test(el.id) || contentEl.id === 'read_tpc' ? 'tpc' : '');
 
   // Date: prefer title attribute on tipTop span
   const dateSpan = el.querySelector('.tipTop span[title]');
@@ -216,8 +275,15 @@ function parseReadFloor(el: Element, idx: number): PostFloor | null {
   const contentHtml = enhanceContentHtml(contentEl.innerHTML);
 
   return {
-    pid: pid || idx + 1,
+    pid: pid || 0,
+    pidParam: pidParam || String(pid || idx + 1),
     floor: displayFloor,
+    article:
+      articleFromLink !== undefined
+        ? articleFromLink
+        : displayFloor > 0
+          ? displayFloor
+          : undefined,
     author,
     authorUid,
     avatarUrl,

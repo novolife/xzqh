@@ -1,8 +1,50 @@
-import { render } from 'preact';
+import { Component, render } from 'preact';
+import type { ComponentChildren } from 'preact';
 import { App } from './App';
 import { ensureRoot, installEarlyMask, shouldActivate } from './bootstrap';
-import { isClientDisabled } from './lib/session';
+import { isClientDisabled, setClientDisabled } from './lib/session';
 import './styles/app.css';
+
+class ClientErrorBoundary extends Component<{ children: ComponentChildren }, { failed: boolean }> {
+  state = { failed: false };
+
+  componentDidCatch(err: unknown) {
+    // 早期遮罩会隐藏原界面；渲染失败时必须给用户可操作的恢复入口。
+    console.error('XZQH client render error', err);
+    this.setState({ failed: true });
+  }
+
+  render() {
+    if (this.state.failed) {
+      return (
+        <div style={{ padding: '32px 16px', font: '14px/1.6 sans-serif', color: '#333' }}>
+          <h2 style={{ margin: '0 0 12px' }}>方舆客户端加载失败</h2>
+          <p style={{ margin: '0 0 16px', color: '#666' }}>
+            页面没有正常渲染。可以尝试刷新，或暂时恢复原论坛界面。
+          </p>
+          <button
+            type="button"
+            style={{ marginRight: 8, padding: '8px 14px' }}
+            onClick={() => location.reload()}
+          >
+            刷新重试
+          </button>
+          <button
+            type="button"
+            style={{ padding: '8px 14px' }}
+            onClick={() => {
+              setClientDisabled(true);
+              location.reload();
+            }}
+          >
+            恢复原界面
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 function boot() {
   if (!shouldActivate()) {
@@ -35,7 +77,12 @@ function boot() {
   const root = ensureRoot();
 
   const mount = () => {
-    render(<App />, root);
+    render(
+      <ClientErrorBoundary>
+        <App />
+      </ClientErrorBoundary>,
+      root,
+    );
   };
 
   if (document.body) mount();

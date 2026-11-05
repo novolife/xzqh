@@ -126,7 +126,8 @@ function parseBoardAnchor(a: HTMLAnchorElement, scope: Element): ForumBoard | nu
     scope.querySelector(`#desc_${fid}, p[id^="desc_"]`)?.textContent?.replace(/\s+/g, ' ').trim() ||
     undefined;
 
-  const mods = [...scope.querySelectorAll('a[href*="u.php"]')]
+  const modScope = (scope.querySelector('th') as Element | null) || scope;
+  const mods = [...modScope.querySelectorAll('a[href*="u.php"]')]
     .map((el) => (el.textContent || '').trim())
     .filter((n) => n && n !== name);
 

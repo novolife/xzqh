@@ -51,7 +51,16 @@ export function App() {
       case 'home':
         return <HomePage />;
       case 'forum':
-        return <ForumPage fid={route.fid} page={route.page} type={route.type} special={route.special} />;
+        return (
+          <ForumPage
+            fid={route.fid}
+            page={route.page}
+            type={route.type}
+            special={route.special}
+            search={route.search}
+            user={user}
+          />
+        );
       case 'thread':
         return <ThreadPage tid={route.tid} page={route.page} user={user} />;
       case 'compose':
@@ -61,6 +70,7 @@ export function App() {
             tid={route.tid}
             quotePid={route.quotePid}
             editPid={route.editPid}
+            article={route.article}
           />
         );
       case 'login':
@@ -91,6 +101,7 @@ export function App() {
       user={user}
       unread={unread}
       showListStyle={route.name !== 'thread'}
+      settingsOpen={route.name === 'settings'}
       onLogout={async () => {
         await logout();
         await refreshSession();
