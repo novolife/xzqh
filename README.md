@@ -16,10 +16,27 @@
 版本号以根目录 [`package.json`](package.json) 的 `version` 为准（写入脚本 `@version`）。
 
 1. 修改 `package.json` 的 `version`（如 `1.0.0` → `1.0.1`）并推送到 GitHub 的 `master` / `main`
-2. Actions 会：构建脚本 → 发布到 `gh-pages`（油猴安装/更新地址）→ 若 `vX.Y.Z` 尚未发布则打 tag 并创建 GitHub Release（附带 `.user.js`）
+2. Actions 会：构建脚本 → 发布到 `gh-pages`（油猴安装/更新地址）→ 更新 `greasyfork` 同步分支 → 若 `vX.Y.Z` 尚未发布则打 tag 并创建 GitHub Release（附带 `.user.js`）
 3. 油猴根据 `@version` 变化自动提示更新
 
 首次使用需在仓库 Settings → Pages 中允许从 `gh-pages` 分支发布。
+
+### 同步到 Greasy Fork
+
+Greasy Fork **没有**可供 Actions 直接上传的发布 API，官方做法是「从 GitHub raw URL 同步」+（可选）Webhook 即时更新。
+
+1. 等 Actions 跑完，确认存在分支 [`greasyfork`](https://github.com/novolife/xzqh/tree/greasyfork) 与文件 `xzqh-forum.user.js`
+2. 打开 [Greasy Fork](https://greasyfork.org/) 登录 → **发布脚本** → **从 URL 导入**，填：  
+   `https://raw.githubusercontent.com/novolife/xzqh/greasyfork/xzqh-forum.user.js`
+3. 勾选「将此脚本设置为从 URL 同步」；同步类型选自动或 Webhook
+4. **即时更新（推荐）**：打开 [Webhook 说明](https://greasyfork.org/zh-CN/users/webhook-info) 生成密钥；在 GitHub 仓库 **Settings → Webhooks → Add webhook**：
+   - Payload URL：页面上给你的 `https://greasyfork.org/.../webhook`
+   - Content type：`application/json`
+   - Secret：刚才生成的密钥
+   - 事件：Just the push event
+5. 之后只要升 `package.json` 的 `version` 并推送 `master`，Actions 会改 `greasyfork` 分支上的脚本；Webhook 通知 Greasy Fork 拉取（需 `@version` 升高才会作为新版本）
+
+注意：Greasy Fork 禁止压缩/混淆代码，本仓库生产构建已关闭 minify，并带有 `@license MIT`。
 
 ## 开发
 

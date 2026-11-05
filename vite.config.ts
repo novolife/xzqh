@@ -62,6 +62,7 @@ export default defineConfig({
         version: resolveUserscriptVersion(),
         description: '方舆论坛美化',
         author: 'XZQH Client',
+        license: 'MIT',
         match: [
           'http://xzqh.info/lt/*',
           'https://xzqh.info/lt/*',
@@ -85,5 +86,7 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    // Greasy Fork 禁止压缩/混淆；保留可读源码以便审核与同步
+    minify: false,
   },
 });

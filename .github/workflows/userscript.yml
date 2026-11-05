@@ -127,6 +127,66 @@ jobs:
           user_name: github-actions[bot]
           user_email: github-actions[bot]@users.noreply.github.com
 
+      # Greasy Fork 无写 API：靠「从 URL 同步」+ GitHub Webhook。
+      # 维护独立 greasyfork 分支（原地修改文件），Webhook 才能识别为 modified。
+      - name: Publish greasyfork sync branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          BRANCH=greasyfork
+          FILE=xzqh-forum.user.js
+          REMOTE="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          PUBLISH_DIR=$(mktemp -d)
+
+          clone_or_init() {
+            if git ls-remote --heads "$REMOTE" "refs/heads/$BRANCH" | grep -q "$BRANCH"; then
+              git clone --depth 1 --branch "$BRANCH" "$REMOTE" "$PUBLISH_DIR"
+              return
+            fi
+            mkdir -p "$PUBLISH_DIR"
+            cd "$PUBLISH_DIR"
+            git init
+            git checkout -b "$BRANCH"
+            printf '%s\n' \
+              '// ==UserScript==' \
+              '// @name         XZQH Forum Client / 方舆论坛客户端' \
+              '// @namespace    http://xzqh.info/lt/' \
+              '// @version      0.0.0' \
+              '// @description  placeholder for Greasy Fork webhook (modified, not added)' \
+              '// @license      MIT' \
+              '// ==/UserScript==' \
+              > "$FILE"
+            printf '%s\n' \
+              '# Greasy Fork sync branch' \
+              '' \
+              '由 GitHub Actions 生成。请在 Greasy Fork 将同步 URL 设为：' \
+              '' \
+              "\`https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/greasyfork/${FILE}\`" \
+              '' \
+              '并按 https://greasyfork.org/zh-CN/users/webhook-info 配置 Webhook。' \
+              > README.md
+            git add "$FILE" README.md
+            git -c user.name='github-actions[bot]' \
+                -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+                commit -m 'chore: greasyfork placeholder'
+            git remote add origin "$REMOTE"
+            git push -u origin "HEAD:$BRANCH"
+          }
+
+          clone_or_init
+          cd "$PUBLISH_DIR"
+          cp "${GITHUB_WORKSPACE}/dist/${FILE}" "$FILE"
+          git add "$FILE"
+          if git diff --cached --quiet; then
+            echo "greasyfork 分支内容无变化，跳过推送"
+            exit 0
+          fi
+          git -c user.name='github-actions[bot]' \
+              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit -m "Publish ${{ steps.ver.outputs.tag }} (${GITHUB_SHA})"
+          git push origin "HEAD:$BRANCH"
+
       - name: Create GitHub Release
         if: steps.ver.outputs.should_release == 'true'
         env:
