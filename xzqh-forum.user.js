@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         方舆论坛客户端
 // @namespace    http://xzqh.info/lt/
-// @version      1.0.1
+// @version      1.0.2
 // @author       XZQH Client
 // @description  方舆论坛（xzqh.info/lt）第三方前端：现代化浏览、登录、发帖/回复；账号与权限仍走原站，不改服务器。安装后打开论坛即可使用；设置页可换主题、调字号或一键恢复原界面。
 // @license      MIT
@@ -4783,6 +4783,14 @@ ${items}
         },
         `${f2.pidParam}-${f2.floor}`
       )),
+      /* @__PURE__ */ u$1(
+        Pager,
+        {
+          page: data.page,
+          totalPages: data.totalPages,
+          onChange: (p2) => navigate({ name: "thread", tid: data.tid, page: p2 })
+        }
+      ),
       data.canReply && ((_c = props.user) == null ? void 0 : _c.loggedIn) && /* @__PURE__ */ u$1("div", { class: "xzqh-panel", id: "xzqh-quick-reply", children: [
         /* @__PURE__ */ u$1("div", { class: "xzqh-row", style: { justifyContent: "space-between", marginBottom: 8 }, children: [
           /* @__PURE__ */ u$1("h2", { style: { margin: 0, fontSize: "1.05rem" }, children: "快速回复" }),
