@@ -957,6 +957,12 @@ export function ThreadPage(props: { tid: number; page: number; user: SessionUser
         />
       ))}
 
+      <Pager
+        page={data.page}
+        totalPages={data.totalPages}
+        onChange={(p) => navigate({ name: 'thread', tid: data.tid, page: p })}
+      />
+
       {data.canReply && props.user?.loggedIn && (
         <div class="xzqh-panel" id="xzqh-quick-reply">
           <div class="xzqh-row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
