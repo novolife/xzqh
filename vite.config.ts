@@ -19,6 +19,25 @@ function resolveUserscriptVersion(): string {
   return String(pkg.version || '1.0.0');
 }
 
+/** changelog.md 的「## x.y.z」条目 → 多行 `// @changelog`。 */
+function loadChangelogEntries(): [string, string][] {
+  const file = path.resolve(__dirname, 'changelog.md');
+  const text = fs.readFileSync(file, 'utf8');
+  const entries: [string, string][] = [];
+  let version = '';
+  for (const line of text.split(/\r?\n/)) {
+    const heading = line.match(/^##\s+(\d+\.\d+\.\d+)\s*$/);
+    if (heading) {
+      version = heading[1];
+      continue;
+    }
+    const note = line.match(/^[-*]\s+(.+)$/)?.[1]?.trim();
+    if (version && note) entries.push(['changelog', `${version} ${note.replace(/\s+/g, ' ')}`]);
+  }
+  if (!entries.length) throw new Error(`changelog.md 没有可用的 ## x.y.z 条目：${file}`);
+  return entries;
+}
+
 /** document-start 时 head 可能尚未创建，把 CSS 注入改为落到 documentElement。 */
 function patchCssInjectHead(): Plugin {
   return {
@@ -79,6 +98,7 @@ export default defineConfig({
         'run-at': 'document-start',
         grant: 'none',
         connect: ['pin.aliyun.com', 'xzqh.info'],
+        $extra: loadChangelogEntries(),
       },
       build: {
         fileName: USERSCRIPT_FILE,
