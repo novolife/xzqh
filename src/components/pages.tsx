@@ -1009,6 +1009,46 @@ export function ThreadPage(props: { tid: number; page: number; user: SessionUser
   );
 }
 
+function scoreValueClass(value: string): string {
+  return /^-/.test(value) ? 'xzqh-score-minus' : 'xzqh-score-plus';
+}
+
+function FloorRating(props: { rating: NonNullable<PostFloor['rating']> }) {
+  const { rating } = props;
+  return (
+    <div class="xzqh-score">
+      <div class="xzqh-score-hd">
+        <span>
+          共 <strong>{rating.count}</strong> 条评分
+        </span>
+        {rating.totals.map((item, i) => (
+          <span key={`${item.name}-${item.value}-${i}`}>
+            {item.name ? `${item.name} ` : ''}
+            <span class={scoreValueClass(item.value)}>{item.value}</span>
+          </span>
+        ))}
+      </div>
+      {rating.entries.length > 0 && (
+        <ul class="xzqh-score-list">
+          {rating.entries.map((entry, i) => (
+            <li key={`${entry.uid || entry.username}-${entry.time || ''}-${i}`}>
+              <UserNameLink name={entry.username} uid={entry.uid} />
+              {entry.changes.map((item, j) => (
+                <span key={`${item.name}-${item.value}-${j}`}>
+                  {item.name ? `${item.name} ` : ''}
+                  <span class={scoreValueClass(item.value)}>{item.value}</span>
+                </span>
+              ))}
+              {entry.reason && <span class="xzqh-score-reason">{entry.reason}</span>}
+              {entry.time && <span class="xzqh-score-time">{entry.time}</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function FloorCard(props: {
   floor: PostFloor;
   tid: number;
@@ -1057,6 +1097,7 @@ function FloorCard(props: {
           ))}
         </div>
       )}
+      {f.rating && <FloorRating rating={f.rating} />}
       <div class="xzqh-floor-ft">
         {f.canQuote && (
           <button type="button" class="xzqh-btn ghost" onClick={props.onQuote}>

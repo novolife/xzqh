@@ -1530,6 +1530,60 @@ a.xzqh-board-latest-title:hover {
   gap: 8px;
   padding: 8px 14px 14px;
 }
+.xzqh-score {
+  margin: 4px 16px 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+.xzqh-score-hd,
+.xzqh-score-list li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  align-items: baseline;
+}
+.xzqh-score-hd {
+  color: var(--muted);
+}
+.xzqh-score-hd strong {
+  color: var(--ink);
+  font-weight: 700;
+}
+.xzqh-score-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 6px 0 0;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.xzqh-score .xzqh-user-link {
+  color: var(--accent);
+  font-weight: 550;
+}
+.xzqh-score .xzqh-user-link:hover {
+  text-decoration: underline;
+}
+.xzqh-score-plus {
+  color: var(--accent-2);
+  font-weight: 700;
+}
+.xzqh-score-minus {
+  color: var(--danger);
+  font-weight: 700;
+}
+.xzqh-score-reason {
+  color: var(--ink);
+}
+.xzqh-score-time {
+  margin-left: auto;
+  color: var(--muted);
+}
 
 .xzqh-form {
   display: flex;

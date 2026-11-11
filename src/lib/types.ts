@@ -116,6 +116,27 @@ export interface ThreadListResult {
   error?: ForumError;
 }
 
+/** 一条评分里的单项积分变化，如 奖励 +10 */
+export interface FloorRatingChange {
+  name: string;
+  value: string;
+}
+
+export interface FloorRatingEntry {
+  username: string;
+  uid?: number;
+  changes: FloorRatingChange[];
+  reason?: string;
+  time?: string;
+}
+
+/** 楼层底部评分：汇总 + 评分记录 */
+export interface FloorRating {
+  count: number;
+  totals: FloorRatingChange[];
+  entries: FloorRatingEntry[];
+}
+
 export interface PostFloor {
   pid: number;
   /** 原站 pid 参数；楼主为 'tpc'，与原站编辑/删除链接一致 */
@@ -133,6 +154,7 @@ export interface PostFloor {
   canDelete: boolean;
   canQuote: boolean;
   attachments: AttachmentItem[];
+  rating?: FloorRating;
 }
 
 export interface AttachmentItem {

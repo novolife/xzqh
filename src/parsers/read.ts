@@ -1,4 +1,11 @@
-import type { AttachmentItem, PostFloor, ThreadDetail } from '@/lib/types';
+import type {
+  AttachmentItem,
+  FloorRating,
+  FloorRatingChange,
+  FloorRatingEntry,
+  PostFloor,
+  ThreadDetail,
+} from '@/lib/types';
 import { absUrl } from '@/lib/http';
 import { detectShowMsg } from './showmsg';
 import { parseVerifyhash } from './index';
@@ -273,6 +280,7 @@ function parseReadFloor(el: Element, idx: number): PostFloor | null {
 
   const attachments = parseAttachments(contentEl);
   const contentHtml = enhanceContentHtml(wrapWithElementFont(contentEl, contentEl.innerHTML));
+  const rating = parseFloorRating(el);
 
   return {
     pid: pid || 0,
@@ -293,7 +301,81 @@ function parseReadFloor(el: Element, idx: number): PostFloor | null {
     canDelete,
     canQuote,
     attachments,
+    rating,
   };
+}
+
+/** 原站 `.read_score`：无评分时 `display:none`，有记录时展示条数、汇总和明细。 */
+function parseFloorRating(el: Element): FloorRating | undefined {
+  const box = el.querySelector('.read_score, [id^="mark_"]');
+  if (!box) return undefined;
+  if (/display\s*:\s*none/i.test(box.getAttribute('style') || '')) return undefined;
+
+  const entries = [...box.querySelectorAll('tr[id^="pingLogTr_"]')]
+    .map(parseRatingRow)
+    .filter((row): row is FloorRatingEntry => !!row);
+  const countText = (box.querySelector('[id^="pingNum_"]')?.textContent || '').trim();
+  const count = Number(countText) || entries.length;
+  if (count <= 0 && entries.length === 0) return undefined;
+
+  return {
+    count: count || entries.length,
+    totals: parseCreditChanges(box.querySelector('[id^="pingTotal_"]')),
+    entries,
+  };
+}
+
+function parseRatingRow(tr: Element): FloorRatingEntry | null {
+  const userLink = tr.querySelector('a[href*="u.php"]') as HTMLAnchorElement | null;
+  const username = (userLink?.textContent || '').replace(/\s+/g, ' ').trim();
+  if (!username) return null;
+  const uid = Number((userLink?.getAttribute('href') || '').match(/uid=(\d+)/)?.[1] || 0) || undefined;
+  const cells = [...tr.children].filter((node) => node.tagName === 'TD');
+  const reasonText = (cells[2]?.textContent || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
+  const reason = !reasonText || /^[-—－]+$/.test(reasonText) ? undefined : reasonText;
+  const time = (tr.querySelector('.read_score_time')?.textContent || cells[3]?.textContent || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return {
+    username,
+    uid,
+    changes: parseCreditChanges(cells[1] || null),
+    reason,
+    time: time || undefined,
+  };
+}
+
+function parseCreditChanges(root: Element | null): FloorRatingChange[] {
+  if (!root) return [];
+  const valueSpans = [...root.querySelectorAll('span')].filter((span) => {
+    if (span.querySelector('span')) return false;
+    return /^[+-]\d+/.test((span.textContent || '').replace(/\s+/g, ''));
+  });
+  const changes = valueSpans.map((span) => {
+    const value = (span.textContent || '').replace(/\s+/g, '');
+    const holder = span.parentElement && span.parentElement !== root ? span.parentElement : span;
+    let name = '';
+    if (holder !== span) {
+      const clone = holder.cloneNode(true) as HTMLElement;
+      clone.querySelectorAll('span').forEach((node) => node.remove());
+      name = (clone.textContent || '').replace(/\u00a0/g, ' ').replace(/[，,]/g, ' ').replace(/\s+/g, ' ').trim();
+    }
+    if (!name) {
+      const parts: string[] = [];
+      let prev = span.previousSibling;
+      while (prev) {
+        if (prev.nodeType === Node.TEXT_NODE) parts.unshift(prev.textContent || '');
+        prev = prev.previousSibling;
+      }
+      name = parts.join('').replace(/\u00a0/g, ' ').replace(/[，,]/g, '').replace(/\s+/g, ' ').trim();
+    }
+    return { name, value };
+  });
+  if (changes.length) return changes;
+
+  const text = (root.textContent || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
+  const matched = text.match(/([^\d+\-，,\s]+)\s*([+-]\d+)/);
+  return matched ? [{ name: matched[1], value: matched[2] }] : [];
 }
 
 function parseAttachments(scope: Element): AttachmentItem[] {
