@@ -19,7 +19,7 @@ function resolveUserscriptVersion(): string {
   return String(pkg.version || '1.0.0');
 }
 
-/** changelog.md 的「## x.y.z」条目 → 多行 `// @changelog`。 */
+/** changelog.md 里最新一版（文件中第一个 ## x.y.z）→ 多行 `// @changelog`。 */
 function loadChangelogEntries(): [string, string][] {
   const file = path.resolve(__dirname, 'changelog.md');
   const text = fs.readFileSync(file, 'utf8');
@@ -28,13 +28,14 @@ function loadChangelogEntries(): [string, string][] {
   for (const line of text.split(/\r?\n/)) {
     const heading = line.match(/^##\s+(\d+\.\d+\.\d+)\s*$/);
     if (heading) {
+      if (version) break;
       version = heading[1];
       continue;
     }
     const note = line.match(/^[-*]\s+(.+)$/)?.[1]?.trim();
     if (version && note) entries.push(['changelog', `${version} ${note.replace(/\s+/g, ' ')}`]);
   }
-  if (!entries.length) throw new Error(`changelog.md 没有可用的 ## x.y.z 条目：${file}`);
+  if (!entries.length) throw new Error(`changelog.md 最新版本没有可用条目：${file}`);
   return entries;
 }
 

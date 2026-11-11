@@ -13,7 +13,7 @@
 
 ### 自动发版
 
-版本号以根目录 [`package.json`](package.json) 的 `version` 为准（写入脚本 `@version`）。更新说明写在 [`changelog.md`](changelog.md)，构建时逐条写入脚本 `@changelog`。
+版本号以根目录 [`package.json`](package.json) 的 `version` 为准（写入脚本 `@version`）。更新说明写在 [`changelog.md`](changelog.md)，构建时只把最新版本的条目写入脚本 `@changelog`。
 
 1. 修改 `package.json` 的 `version`（如 `1.0.0` → `1.0.1`）并推送到 GitHub 的 `master` / `main`
 2. Actions 会：构建脚本 → 发布到 `gh-pages`（油猴安装/更新地址）→ 更新 `greasyfork` 同步分支 → 若 `vX.Y.Z` 尚未发布则打 tag 并创建 GitHub Release（附带 `.user.js`）
