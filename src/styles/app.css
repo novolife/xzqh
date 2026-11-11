@@ -1515,6 +1515,11 @@ a.xzqh-board-latest-title:hover {
   height: auto;
   border-radius: 8px;
 }
+.xzqh-floor-bd img:not(.wc-smile),
+.xzqh-vote img:not(.wc-smile),
+.xzqh-ed-preview img:not(.wc-smile) {
+  cursor: zoom-in;
+}
 .xzqh-floor-bd blockquote, .wc-quote {
   margin: 12px 0;
   padding: 10px 12px;
@@ -2501,4 +2506,104 @@ a.xzqh-board-latest-title:hover {
     grid-template-columns: repeat(auto-fill, 96px);
   }
   .xzqh-floor-hd { flex-direction: column; }
+}
+
+.xzqh-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: rgba(8, 16, 24, 0.88);
+  color: #fff;
+  user-select: none;
+}
+.xzqh-viewer-stage {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  touch-action: none;
+  cursor: grab;
+}
+.xzqh-viewer-stage.is-dragging {
+  cursor: grabbing;
+}
+.xzqh-viewer-img {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: auto;
+  height: auto;
+  max-width: none;
+  max-height: none;
+  transform-origin: center center;
+  -webkit-user-drag: none;
+}
+.xzqh-viewer-img.is-pending {
+  opacity: 0;
+}
+.xzqh-viewer-status {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  color: #fff;
+  font-size: 0.95rem;
+}
+.xzqh-viewer-close {
+  position: absolute;
+  z-index: 2;
+  top: max(12px, env(safe-area-inset-top));
+  right: max(12px, env(safe-area-inset-right));
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+}
+.xzqh-viewer-close:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+.xzqh-viewer-bar {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  width: max-content;
+  max-width: calc(100% - 24px);
+}
+.xzqh-viewer-btn {
+  border: 0;
+  border-radius: 8px;
+  min-height: 36px;
+  padding: 0 12px;
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  font: inherit;
+  font-size: 0.85rem;
+  text-decoration: none;
+  cursor: pointer;
+}
+.xzqh-viewer-btn:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+.xzqh-viewer-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.xzqh-viewer-pct {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 4px;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
 }

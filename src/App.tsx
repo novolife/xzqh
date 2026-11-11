@@ -15,6 +15,7 @@ import {
 import { loadSession, logout } from './api/auth';
 import { fetchUnreadHint } from './api/message';
 import { linkClickHandler, parseLocation } from './router';
+import { ImageViewer } from './components/ImageViewer';
 
 export function App() {
   const [route, setRoute] = useState<Route>(() => parseLocation());
@@ -116,6 +117,7 @@ export function App() {
       }}
     >
       {body}
+      <ImageViewer />
     </Layout>
   );
 }
