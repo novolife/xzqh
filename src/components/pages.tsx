@@ -1088,13 +1088,15 @@ function FloorCard(props: {
         <div class="xzqh-muted">{floorLabel}</div>
       </div>
       <div class="xzqh-floor-bd" dangerouslySetInnerHTML={{ __html: f.contentHtml }} />
-      {f.attachments.length > 0 && (
+      {f.attachments.some((a) => !a.isImage) && (
         <div class="xzqh-attach-list" style={{ padding: '0 16px 8px' }}>
-          {f.attachments.map((a, i) => (
-            <a key={i} href={a.url} target="_blank" rel="noreferrer">
-              {a.isImage ? '图片' : '附件'}：{a.name}
-            </a>
-          ))}
+          {f.attachments
+            .filter((a) => !a.isImage)
+            .map((a, i) => (
+              <a key={i} href={a.url} target="_blank" rel="noreferrer">
+                附件：{a.name}
+              </a>
+            ))}
         </div>
       )}
       {f.rating && <FloorRating rating={f.rating} />}

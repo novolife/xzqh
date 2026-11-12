@@ -405,37 +405,39 @@ export function ImageViewer() {
         />
       </div>
       <div class="xzqh-viewer-bar">
-        {count > 1 && (
-          <button type="button" class="xzqh-viewer-btn" disabled={atStart} onClick={() => moveViewer(-1)}>
-            上一张
+        <div class="xzqh-viewer-bar-inner">
+          {count > 1 && (
+            <button type="button" class="xzqh-viewer-btn" disabled={atStart} onClick={() => moveViewer(-1)}>
+              上一张
+            </button>
+          )}
+          <button type="button" class="xzqh-viewer-btn" onClick={() => zoomBy(1 / 1.25)} disabled={!ready}>
+            缩小
           </button>
-        )}
-        <button type="button" class="xzqh-viewer-btn" onClick={() => zoomBy(1 / 1.25)} disabled={!ready}>
-          缩小
-        </button>
-        <button type="button" class="xzqh-viewer-btn" onClick={applyFit} disabled={!ready}>
-          适应
-        </button>
-        <button type="button" class="xzqh-viewer-btn" onClick={applyOriginal} disabled={!ready}>
-          原尺寸
-        </button>
-        <button type="button" class="xzqh-viewer-btn" onClick={() => zoomBy(1.25)} disabled={!ready}>
-          放大
-        </button>
-        {ready && <span class="xzqh-viewer-pct">{Math.round(frame.zoom * 100)}%</span>}
-        {count > 1 && (
-          <button type="button" class="xzqh-viewer-btn" disabled={atEnd} onClick={() => moveViewer(1)}>
-            下一张
+          <button type="button" class="xzqh-viewer-btn" onClick={applyFit} disabled={!ready}>
+            适应
           </button>
-        )}
-        {count > 1 && (
-          <span class="xzqh-viewer-pct">
-            {current.index + 1} / {count}
-          </span>
-        )}
-        <a class="xzqh-viewer-btn" href={src} target="_blank" rel="noreferrer">
-          新标签打开
-        </a>
+          <button type="button" class="xzqh-viewer-btn" onClick={applyOriginal} disabled={!ready}>
+            原尺寸
+          </button>
+          <button type="button" class="xzqh-viewer-btn" onClick={() => zoomBy(1.25)} disabled={!ready}>
+            放大
+          </button>
+          {ready && <span class="xzqh-viewer-pct">{Math.round(frame.zoom * 100)}%</span>}
+          {count > 1 && (
+            <button type="button" class="xzqh-viewer-btn" disabled={atEnd} onClick={() => moveViewer(1)}>
+              下一张
+            </button>
+          )}
+          {count > 1 && (
+            <span class="xzqh-viewer-pct">
+              {current.index + 1} / {count}
+            </span>
+          )}
+          <a class="xzqh-viewer-btn" href={src} target="_blank" rel="noreferrer">
+            新标签打开
+          </a>
+        </div>
       </div>
     </div>
   );

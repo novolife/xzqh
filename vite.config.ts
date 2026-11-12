@@ -19,6 +19,13 @@ function resolveUserscriptVersion(): string {
   return String(pkg.version || '1.0.0');
 }
 
+/** 本地构建带「（测试）」；GitHub Actions 设置 USERSCRIPT_RELEASE=1 后用正式名。 */
+function resolveUserscriptName(): string {
+  const base = '方舆论坛客户端';
+  if (process.env.USERSCRIPT_RELEASE === '1') return base;
+  return `${base}（测试）`;
+}
+
 /** changelog.md 里最新一版（文件中第一个 ## x.y.z）→ 多行 `// @changelog`。 */
 function loadChangelogEntries(): [string, string][] {
   const file = path.resolve(__dirname, 'changelog.md');
@@ -77,7 +84,7 @@ export default defineConfig({
     monkey({
       entry: 'src/main.tsx',
       userscript: {
-        name: '方舆论坛客户端',
+        name: resolveUserscriptName(),
         namespace: 'http://xzqh.info/lt/',
         version: resolveUserscriptVersion(),
         description:

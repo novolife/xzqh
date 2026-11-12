@@ -66,6 +66,9 @@ jobs:
 
       - name: Build userscript
         run: npm run build
+        env:
+          # 正式发布名不含「（测试）」；本地 npm run build 会带上
+          USERSCRIPT_RELEASE: '1'
         # @version 直接取 package.json（见 vite.config.ts）
 
       - name: Verify artifact & @version

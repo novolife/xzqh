@@ -10,7 +10,7 @@ import { absUrl } from '@/lib/http';
 import { detectShowMsg } from './showmsg';
 import { parseVerifyhash } from './index';
 import { parseMaxPage, extractPostForm } from './thread';
-import { enhanceContentHtml, wrapWithElementFont } from '@/windcode';
+import { enhanceContentHtml, escapeHtml, wrapWithElementFont } from '@/windcode';
 import { splitTitleTypes, stripForumTitlePrefix } from '@/lib/title';
 import type { ThreadTypeTag } from '@/lib/types';
 
@@ -192,7 +192,9 @@ function parseFloors(doc: Document): PostFloor[] {
 function parseReadFloor(el: Element, idx: number): PostFloor | null {
   const contentEl =
     el.querySelector('.tpc_content') ||
-    el.querySelector('[id^="read_"]:not([id^="read_send"]):not([id^="readFace"]):not([id^="readfloor"])') ||
+    el.querySelector(
+      '[id^="read_"]:not([id^="read_send"]):not([id^="readFace"]):not([id^="readfloor"]):not([id^="read_Att"])',
+    ) ||
     el.querySelector('#read_tpc');
 
   if (!contentEl) return null;
@@ -278,8 +280,11 @@ function parseReadFloor(el: Element, idx: number): PostFloor | null {
     /引用|回复/.test(el.innerHTML) ||
     !!el.querySelector('a[href*="quote"], a[onclick*="quote"], a[onclick*="postreply"]');
 
-  const attachments = parseAttachments(contentEl);
-  const contentHtml = enhanceContentHtml(wrapWithElementFont(contentEl, contentEl.innerHTML));
+  const attachImages = parseReadAttachBlock(el, contentEl);
+  const attachments = dedupeAttachments([...parseAttachments(contentEl), ...attachImages]);
+  const contentHtml =
+    enhanceContentHtml(wrapWithElementFont(contentEl, contentEl.innerHTML)) +
+    attachImagesHtml(attachImages);
   const rating = parseFloorRating(el);
 
   return {
@@ -376,6 +381,66 @@ function parseCreditChanges(root: Element | null): FloorRatingChange[] {
   const text = (root.textContent || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
   const matched = text.match(/([^\d+\-，,\s]+)\s*([+-]\d+)/);
   return matched ? [{ name: matched[1], value: matched[2] }] : [];
+}
+
+/**
+ * 原站把插入的图片放在正文外的 `#read_Att_* .imgList`，不在 `.tpc_content` 里。
+ * 例如 attachment/*.gif。这里收进来，稍后插回正文以便显示和打开查看器。
+ */
+function parseReadAttachBlock(floor: Element, contentEl: Element): AttachmentItem[] {
+  const block = floor.querySelector('[id^="read_Att_"]');
+  if (!block || contentEl.contains(block)) return [];
+  const inContent = new Set(
+    [...contentEl.querySelectorAll('img')]
+      .map((img) => absUrl(img.getAttribute('src')))
+      .filter(Boolean),
+  );
+  const items: AttachmentItem[] = [];
+  const seen = new Set<string>();
+  for (const img of block.querySelectorAll('img[src*="attachment/"]')) {
+    if (img.closest('.pw_menu')) continue;
+    const url = absUrl(img.getAttribute('src'));
+    if (!url || seen.has(url) || inContent.has(url)) continue;
+    seen.add(url);
+    const li = img.closest('li');
+    const raw = (li?.querySelector('[id^="att_pic_"]:not([id*="_sub"])')?.textContent || '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const name = raw.replace(/^图片\s*[:：]\s*/, '').trim() || '图片';
+    items.push({ name, url, isImage: true });
+  }
+  for (const a of block.querySelectorAll('a[href*="job.php?action=download"], a[href*="attachment/"]')) {
+    if (a.querySelector('img')) continue;
+    const url = absUrl(a.getAttribute('href'));
+    if (!url || seen.has(url) || inContent.has(url)) continue;
+    seen.add(url);
+    const name = (a.textContent || '').replace(/\s+/g, ' ').trim() || '附件';
+    const isImage = /\.(png|jpe?g|gif|webp|bmp)(?:$|\?)/i.test(url);
+    items.push({ name, url, isImage });
+  }
+  return items;
+}
+
+function attachImagesHtml(items: AttachmentItem[]): string {
+  return items
+    .filter((item) => item.isImage && item.url)
+    .map(
+      (item) =>
+        `<p class="xzqh-attach-img"><img src="${escapeHtml(item.url)}" alt="${escapeHtml(item.name)}" loading="lazy" /></p>`,
+    )
+    .join('');
+}
+
+function dedupeAttachments(items: AttachmentItem[]): AttachmentItem[] {
+  const seen = new Set<string>();
+  const out: AttachmentItem[] = [];
+  for (const item of items) {
+    const key = item.url || `${item.name}-${item.isImage}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+  }
+  return out;
 }
 
 function parseAttachments(scope: Element): AttachmentItem[] {

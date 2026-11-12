@@ -1515,6 +1515,9 @@ a.xzqh-board-latest-title:hover {
   height: auto;
   border-radius: 8px;
 }
+.xzqh-floor-bd .xzqh-attach-img {
+  margin: 12px 0 4px;
+}
 .xzqh-floor-bd img:not(.wc-smile),
 .xzqh-vote img:not(.wc-smile),
 .xzqh-ed-preview img:not(.wc-smile) {
@@ -2557,42 +2560,68 @@ a.xzqh-board-latest-title:hover {
   height: 40px;
   border: 0;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.16);
+  background: rgba(8, 12, 18, 0.82);
   color: #fff;
   font-size: 26px;
   line-height: 1;
   cursor: pointer;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
 }
 .xzqh-viewer-close:hover {
-  background: rgba(255, 255, 255, 0.28);
+  background: rgba(8, 12, 18, 0.94);
 }
 .xzqh-viewer-bar {
   position: absolute;
   z-index: 2;
-  left: 50%;
+  left: 0;
+  right: 0;
   bottom: max(16px, env(safe-area-inset-bottom));
-  transform: translateX(-50%);
+  display: flex;
+  justify-content: center;
+  padding: 0 12px;
+  pointer-events: none;
+}
+.xzqh-viewer-bar-inner {
+  pointer-events: auto;
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
+  align-items: center;
   gap: 8px;
-  width: max-content;
-  max-width: calc(100% - 24px);
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(8, 12, 18, 0.88);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
 .xzqh-viewer-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  flex: 0 0 auto;
   border: 0;
   border-radius: 8px;
   min-height: 36px;
   padding: 0 12px;
-  background: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.14);
   color: #fff;
   font: inherit;
   font-size: 0.85rem;
+  line-height: 1;
+  white-space: nowrap;
   text-decoration: none;
   cursor: pointer;
 }
+a.xzqh-viewer-btn,
+a.xzqh-viewer-btn:hover {
+  color: #fff;
+  text-decoration: none;
+}
 .xzqh-viewer-btn:hover {
-  background: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.26);
 }
 .xzqh-viewer-btn:disabled {
   opacity: 0.35;
@@ -2601,9 +2630,13 @@ a.xzqh-board-latest-title:hover {
 .xzqh-viewer-pct {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
   min-height: 36px;
   padding: 0 4px;
-  color: rgba(255, 255, 255, 0.8);
+  color: #fff;
   font-size: 0.85rem;
+  line-height: 1;
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
